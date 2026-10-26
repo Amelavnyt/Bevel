@@ -351,7 +351,7 @@ The layout is dark by default and modelled on common parametric CAD workspaces.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ File Edit View │ [SOLID] [SKETCH] [INSPECT] [SCRIPTS]  tools… │ main ▾   │
+│ File Edit View │ [SOLID] [INSPECT] [SCRIPTS]  tools…          │ main ▾   │
 ├───────────────┬──────────────────────────────────────────┬───────────────┤
 │ Browser       │                                          │ Properties /  │
 │ ▸ Origin      │              3D viewport                 │ feature panel │
@@ -368,6 +368,8 @@ While a sketch is open, the same bar shows that sketch's timeline instead:
 │ Part ▸ Sketch1 │ ⏮ ◀ ▶ ⏭  [Line][Line][Coincident][d1][Trim] ▌  [Finish] │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+Sketching is part of solid modeling, not a separate workspace. Create Sketch is the first tool in the SOLID toolbar. While a sketch is open, the toolbar shows the sketch tools (line, arc, circle, rectangle, spline, dimension, constraints, trim, extend, offset, ...) and Finish Sketch in place of the SOLID tools, and the bottom bar shows the sketch's timeline. Finishing the sketch brings both back.
 
 ### App state and tools
 

@@ -3,19 +3,17 @@
 use crate::{UiState, Workspace};
 
 /// Tool groups per workspace. Every tool is disabled until its feature exists.
+///
+/// Sketch tools (line, arc, dimension, trim, ...) are not listed here: they
+/// replace these tools while a sketch is open.
 fn tool_groups(workspace: Workspace) -> &'static [&'static [&'static str]] {
     match workspace {
         Workspace::Solid => &[
-            &["Sketch"],
+            &["Create Sketch"],
             &["Box", "Cylinder", "Sphere", "Cone", "Torus"],
             &["Extrude", "Revolve", "Sweep", "Loft"],
             &["Fillet", "Chamfer", "Shell", "Draft"],
             &["Combine", "Pattern", "Mirror"],
-        ],
-        Workspace::Sketch => &[
-            &["Line", "Arc", "Circle", "Rectangle", "Spline"],
-            &["Dimension", "Constraints"],
-            &["Trim", "Extend", "Offset"],
         ],
         Workspace::Inspect => &[&["Measure", "Section", "Mass Properties"]],
         Workspace::Scripts => &[&["Run Script", "Script Editor"]],

@@ -29,13 +29,15 @@ pub use log::{LogBuffer, LogLayer, LogLine};
 use bevel_render::Projection;
 
 /// A group of tools shown in the toolbar, like the workspaces of other CAD tools.
+///
+/// Sketching is part of solid modeling, not a workspace of its own: Create
+/// Sketch lives in the SOLID tools, and while a sketch is open the sketch
+/// tools replace the toolbar's contents until the sketch is finished.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Workspace {
-    /// Solid modeling: primitives, sketches and features.
+    /// Solid modeling: sketches, primitives and features.
     #[default]
     Solid,
-    /// Sketch tools; active while a sketch is open.
-    Sketch,
     /// Measurement and analysis.
     Inspect,
     /// Macros and script features.
@@ -44,13 +46,12 @@ pub enum Workspace {
 
 impl Workspace {
     /// All workspaces, in toolbar order.
-    pub const ALL: [Self; 4] = [Self::Solid, Self::Sketch, Self::Inspect, Self::Scripts];
+    pub const ALL: [Self; 3] = [Self::Solid, Self::Inspect, Self::Scripts];
 
     /// Label shown on the workspace tab.
     pub fn label(self) -> &'static str {
         match self {
             Self::Solid => "SOLID",
-            Self::Sketch => "SKETCH",
             Self::Inspect => "INSPECT",
             Self::Scripts => "SCRIPTS",
         }
