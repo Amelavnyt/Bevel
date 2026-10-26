@@ -26,7 +26,6 @@
 //!   reduction with an error bound; arc length by adaptive Gauss-Legendre
 //!   quadrature; closest point by sampling, Newton (section 6.1) and a
 //!   branch-and-bound check over Bezier segments.
-//! - [`Aabb2`], until `bevel-math` provides one.
 //!
 //! The Gauss-Legendre rules and the Newton iteration are local and private
 //! for now; they move to the numerics in `bevel-math` once it has them.
@@ -38,14 +37,12 @@
 
 pub mod basis;
 
-mod aabb2;
 mod error;
 mod gauss_legendre;
 mod homogeneous;
 mod knots;
 mod nurbs;
 
-pub use aabb2::Aabb2;
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
@@ -57,3 +54,9 @@ pub use nurbs::{ClosestPoint, NurbsCurve, NurbsCurve2, NurbsCurve3};
 /// evaluation never allocates. Degree 25 matches the limit of the common
 /// exchange kernels.
 pub const MAX_DEGREE: usize = 25;
+
+/// The highest derivative order [`NurbsCurve::derivatives`] computes.
+///
+/// Geometry needs at most third derivatives; the cap keeps a careless
+/// caller from requesting an enormous allocation.
+pub const MAX_DERIVATIVE_ORDER: usize = 16;

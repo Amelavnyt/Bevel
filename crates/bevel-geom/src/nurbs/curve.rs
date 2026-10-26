@@ -40,7 +40,8 @@ use bevel_math::{Aabb3, DMat3, DMat4, DVec3, DVec4};
 
 use crate::basis::{basis_funs_raw, ders_basis_funs_raw};
 use crate::knots::check_degree;
-use crate::{Aabb2, GeomError, Homogeneous, KnotVector, MAX_DEGREE};
+use crate::{GeomError, Homogeneous, KnotVector, MAX_DEGREE, MAX_DERIVATIVE_ORDER};
+use bevel_math::Aabb2;
 
 /// Relative difference between weights above which a curve counts as
 /// rational.
@@ -251,8 +252,11 @@ impl<H: Homogeneous> NurbsCurve<H> {
     /// Parameters outside the domain are clamped to it. At a knot the
     /// derivatives are those of the span that starts there (the last span at
     /// the end of the domain).
+    ///
+    /// Orders above [`MAX_DERIVATIVE_ORDER`] are not computed: the result
+    /// has `min(n, MAX_DERIVATIVE_ORDER) + 1` entries.
     pub fn derivatives(&self, u: f64, n: usize) -> Vec<H::Point> {
-        let mut out = vec![H::point_zero(); n.saturating_add(1)];
+        let mut out = vec![H::point_zero(); n.min(MAX_DERIVATIVE_ORDER) + 1];
         self.derivatives_into(u, &mut out);
         out
     }
@@ -419,6 +423,16 @@ mod tests {
             Some(&[1.0, h, 1.0]),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn derivative_order_is_capped() {
+        let c = quarter_circle(1.0);
+        assert_eq!(c.derivatives(0.5, 3).len(), 4);
+        assert_eq!(
+            c.derivatives(0.5, usize::MAX).len(),
+            crate::MAX_DERIVATIVE_ORDER + 1
+        );
     }
 
     #[test]
