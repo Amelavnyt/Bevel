@@ -11,5 +11,6 @@ mod basis;
 mod degree;
 mod eval;
 mod knot_ops;
+mod measure;
 mod strategies;
 mod structure;

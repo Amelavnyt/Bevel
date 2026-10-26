@@ -31,7 +31,10 @@
 
 mod degree;
 mod knot_ops;
+mod measure;
 mod structure;
+
+pub use measure::ClosestPoint;
 
 use bevel_math::{Aabb3, DMat3, DMat4, DVec3, DVec4};
 
@@ -257,12 +260,23 @@ impl<H: Homogeneous> NurbsCurve<H> {
     /// [`NurbsCurve::derivatives`] into a caller-provided buffer of
     /// `n + 1` points.
     pub(crate) fn derivatives_into(&self, u: f64, out: &mut [H::Point]) {
+        let u = self.clamp_param(u);
+        let span = self.knots.span(self.degree, u);
+        self.derivatives_in_span(u, span, out);
+    }
+
+    /// [`NurbsCurve::derivatives_into`] using the polynomial piece of the
+    /// given knot span, which lets callers evaluate a span up to and
+    /// including its end knot.
+    ///
+    /// Requires a non-empty `span` from [`KnotVector::span`] (or an index
+    /// with the same properties: `p <= span < control.len()` and
+    /// `U[span] < U[span + 1]`).
+    pub(crate) fn derivatives_in_span(&self, u: f64, span: usize, out: &mut [H::Point]) {
         let Some(n) = out.len().checked_sub(1) else {
             return;
         };
         let p = self.degree;
-        let u = self.clamp_param(u);
-        let span = self.knots.span(p, u);
         let du = n.min(p);
         let ders = ders_basis_funs_raw(self.knots.as_slice(), span, u, p, du);
         // A3.2 on the homogeneous points; derivatives above the degree vanish.

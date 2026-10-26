@@ -23,15 +23,24 @@
 //!   transforms and control-point bounds; knot insertion, refinement and
 //!   removal (A5.1, A5.4, A5.8); clamping, Bezier decomposition (A5.6),
 //!   splitting, reversal and reparametrisation; degree elevation (A5.9) and
-//!   reduction with an error bound.
+//!   reduction with an error bound; arc length by adaptive Gauss-Legendre
+//!   quadrature; closest point by sampling, Newton (section 6.1) and a
+//!   branch-and-bound check over Bezier segments.
+//! - [`Aabb2`], until `bevel-math` provides one.
 //!
-//! Next: arc length and point inversion for curves, then analytic curves, NURBS and analytic surfaces, and
+//! The Gauss-Legendre rules and the Newton iteration are local and private
+//! for now; they move to the numerics in `bevel-math` once it has them.
+//!
+//! Next: curve construction (exact circles, arcs and conics as rational
+//! quadratics; interpolation and least-squares fitting), analytic curves and
+//! the `CurveGeom` trait, then NURBS and analytic surfaces, and
 //! intersections with booleans.
 
 pub mod basis;
 
 mod aabb2;
 mod error;
+mod gauss_legendre;
 mod homogeneous;
 mod knots;
 mod nurbs;
@@ -40,7 +49,7 @@ pub use aabb2::Aabb2;
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
-pub use nurbs::{NurbsCurve, NurbsCurve2, NurbsCurve3};
+pub use nurbs::{ClosestPoint, NurbsCurve, NurbsCurve2, NurbsCurve3};
 
 /// The highest supported degree for curves and surfaces.
 ///

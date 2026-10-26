@@ -8,10 +8,14 @@ use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
 /// A fixed-seed configuration so that runs are reproducible.
+///
+/// For exploratory runs, `BEVEL_PROPTEST_SEED` replaces the seed and
+/// `BEVEL_PROPTEST_CASES` the number of cases.
 pub fn config(cases: u32) -> Config {
+    let env = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<u64>().ok());
     Config {
-        cases,
-        rng_seed: RngSeed::Fixed(0x5eed_b0e1),
+        cases: env("BEVEL_PROPTEST_CASES").map_or(cases, |c| u32::try_from(c).unwrap_or(cases)),
+        rng_seed: RngSeed::Fixed(env("BEVEL_PROPTEST_SEED").unwrap_or(0x5eed_b0e1)),
         failure_persistence: None,
         ..Config::default()
     }
@@ -52,7 +56,14 @@ pub fn clamped_knots(degree: usize, extra: usize) -> impl Strategy<Value = Vec<f
 /// A degree in `1..=5` with a clamped knot vector for `degree + 1 + extra`
 /// control points, `extra` in `2..=10`.
 pub fn degree_and_knots() -> impl Strategy<Value = (usize, Vec<f64>)> {
-    (1usize..=5, 2usize..=10)
+    degree_and_knots_in(1..=5)
+}
+
+/// As [`degree_and_knots`] with the degree drawn from `degrees`.
+fn degree_and_knots_in(
+    degrees: std::ops::RangeInclusive<usize>,
+) -> impl Strategy<Value = (usize, Vec<f64>)> {
+    (degrees, 2usize..=10)
         .prop_flat_map(|(p, extra)| clamped_knots(p, extra).prop_map(move |k| (p, k)))
 }
 
@@ -79,8 +90,12 @@ struct CurveParts {
 
 /// Degree, knots, coordinates and (when rational) weights for a random
 /// curve of dimension `dim`.
-fn curve_parts(dim: usize, rational: bool) -> impl Strategy<Value = CurveParts> {
-    degree_and_knots().prop_flat_map(move |(p, knots)| {
+fn curve_parts(
+    dim: usize,
+    rational: bool,
+    degrees: std::ops::RangeInclusive<usize>,
+) -> impl Strategy<Value = CurveParts> {
+    degree_and_knots_in(degrees).prop_flat_map(move |(p, knots)| {
         let count = knots.len() - p - 1;
         (
             Just(p),
@@ -99,7 +114,23 @@ fn curve_parts(dim: usize, rational: bool) -> impl Strategy<Value = CurveParts> 
 
 /// A random 3D curve; rational when `rational` is set.
 pub fn curve3(rational: bool) -> impl Strategy<Value = NurbsCurve3> {
-    curve_parts(3, rational).prop_map(|c| {
+    curve3_of_degree(rational, 1..=5)
+}
+
+/// A random degree-1 3D curve (a polyline), rational or not.
+pub fn polyline3() -> impl Strategy<Value = NurbsCurve3> {
+    prop_oneof![
+        curve3_of_degree(true, 1..=1),
+        curve3_of_degree(false, 1..=1)
+    ]
+}
+
+/// A random 3D curve with its degree drawn from `degrees`.
+fn curve3_of_degree(
+    rational: bool,
+    degrees: std::ops::RangeInclusive<usize>,
+) -> impl Strategy<Value = NurbsCurve3> {
+    curve_parts(3, rational, degrees).prop_map(|c| {
         let pts: Vec<DVec3> = c
             .coords
             .iter()
@@ -112,7 +143,7 @@ pub fn curve3(rational: bool) -> impl Strategy<Value = NurbsCurve3> {
 
 /// A random 2D curve; rational when `rational` is set.
 pub fn curve2(rational: bool) -> impl Strategy<Value = NurbsCurve2> {
-    curve_parts(2, rational).prop_map(|c| {
+    curve_parts(2, rational, 1..=5).prop_map(|c| {
         let pts: Vec<DVec2> = c.coords.iter().map(|v| DVec2::new(v[0], v[1])).collect();
         let kv = KnotVector::new(c.knots, c.degree).unwrap();
         NurbsCurve2::from_points(c.degree, kv, &pts, c.weights.as_deref()).unwrap()

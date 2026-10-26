@@ -4,4 +4,4 @@
 
 mod curve;
 
-pub use curve::{NurbsCurve, NurbsCurve2, NurbsCurve3};
+pub use curve::{ClosestPoint, NurbsCurve, NurbsCurve2, NurbsCurve3};
