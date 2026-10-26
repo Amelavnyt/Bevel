@@ -26,6 +26,10 @@
 //!   reduction with an error bound; arc length by adaptive Gauss-Legendre
 //!   quadrature; closest point by sampling, Newton (section 6.1) and a
 //!   branch-and-bound check over Bezier segments.
+//! - [`fit`]: curve fitting through points; parametrization and averaged
+//!   knots (eq. 9.4, 9.5, 9.8), global interpolation (A9.1) with optional
+//!   end tangents, and least-squares approximation with a tolerance search
+//!   (section 9.4.1).
 //!
 //! The Gauss-Legendre rules and the Newton iteration are local and private
 //! for now; they move to the numerics in `bevel-math` once it has them.

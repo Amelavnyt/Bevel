@@ -53,6 +53,7 @@
 //! All results are deterministic: the same input always gives bit-identical
 //! output.
 
+mod approximate;
 mod interpolate;
 mod solve;
 
@@ -64,6 +65,7 @@ use bevel_math::{DVec2, DVec3, DVec4};
 use crate::knots::check_degree;
 use crate::{GeomError, Homogeneous, KnotVector};
 
+pub use approximate::{approximate, approximate_to_tolerance};
 pub use interpolate::{interpolate, interpolate_with_tangents};
 
 /// Consecutive data points closer than this fraction of the data extent are

@@ -7,5 +7,6 @@
 // Helpers outside `#[test]` functions unwrap freely too.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod approximate;
 mod interpolate;
 mod strategies;
