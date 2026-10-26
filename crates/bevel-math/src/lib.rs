@@ -6,11 +6,17 @@
 //! radians. The vector types are [glam]'s double-precision types behind
 //! names that say what a value means (`Point3` vs `Vector3`).
 //!
-//! Status: the type aliases, tolerances and [`Aabb3`] exist; intervals,
-//! robust predicates, root finding, Newton iteration and quadrature arrive
-//! in the "Math & NURBS" phase of the roadmap.
+//! Status: the type aliases, tolerances, bounding boxes ([`Aabb2`],
+//! [`Aabb3`]), [`Interval`], coordinate frames ([`Frame3`]) and
+//! [`MathError`] exist, together with the numerical building blocks:
+//! robust geometric [`predicates`], polynomial [`roots`], damped
+//! [`newton`] iteration and Gauss–Legendre [`quadrature`]. Curves, surfaces
+//! and NURBS evaluation build on these in the "Math & NURBS" phase of the
+//! roadmap.
 
+pub mod newton;
 pub mod predicates;
+pub mod quadrature;
 pub mod roots;
 pub mod tol;
 
@@ -22,7 +28,7 @@ mod interval;
 pub use aabb::{Aabb2, Aabb3};
 pub use error::MathError;
 pub use frame::Frame3;
-pub use glam::{DMat3, DMat4, DQuat, DVec2, DVec3, DVec4};
+pub use glam::{DMat2, DMat3, DMat4, DQuat, DVec2, DVec3, DVec4};
 pub use interval::Interval;
 
 /// View and projection matrix constructors (glam's camera module).
