@@ -53,6 +53,9 @@
 //! All results are deterministic: the same input always gives bit-identical
 //! output.
 
+mod interpolate;
+mod solve;
+
 use std::fmt::Debug;
 use std::ops::{Add, Mul, Sub};
 
@@ -60,6 +63,8 @@ use bevel_math::{DVec2, DVec3, DVec4};
 
 use crate::knots::check_degree;
 use crate::{GeomError, Homogeneous, KnotVector};
+
+pub use interpolate::{interpolate, interpolate_with_tangents};
 
 /// Consecutive data points closer than this fraction of the data extent are
 /// treated as coincident.
@@ -90,6 +95,11 @@ pub trait FitPoint:
     /// The Euclidean length of the vector from the origin.
     fn length(self) -> f64 {
         <Self::Homogeneous as Homogeneous>::point_length(self)
+    }
+
+    /// The dot product with `other`.
+    fn dot(self, other: Self) -> f64 {
+        <Self::Homogeneous as Homogeneous>::point_dot(self, other)
     }
 
     /// Returns `true` if every coordinate is finite.
