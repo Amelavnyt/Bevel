@@ -16,14 +16,16 @@ pub const BORDER: Color32 = Color32::from_rgb(0x3a, 0x3e, 0x46);
 pub const TEXT: Color32 = Color32::from_rgb(0xd8, 0xdd, 0xe3);
 /// Secondary text: hints, group labels.
 pub const TEXT_WEAK: Color32 = Color32::from_rgb(0x8f, 0x97, 0xa1);
-/// Selection and focus.
-pub const ACCENT: Color32 = Color32::from_rgb(0x3b, 0x8e, 0xdb);
-/// Highlights that match the orange in the icons.
-pub const HIGHLIGHT: Color32 = Color32::from_rgb(0xf5, 0x9e, 0x2e);
+/// Bevel's signature teal: selection, focus, pressed and toggled controls.
+pub const ACCENT: Color32 = Color32::from_rgb(0x2d, 0x89, 0x85);
+/// A lighter teal for text and lines that must read on dark backgrounds.
+pub const ACCENT_LIGHT: Color32 = Color32::from_rgb(0x58, 0xaa, 0xa5);
+/// The light green accent: highlights, matching the green in the icons.
+pub const HIGHLIGHT: Color32 = Color32::from_rgb(0x77, 0xc8, 0x9d);
 /// Hovered widget background.
 pub const HOVER: Color32 = Color32::from_rgb(0x3a, 0x3f, 0x47);
-/// Pressed or selected widget background.
-pub const ACTIVE: Color32 = Color32::from_rgb(0x2f, 0x4f, 0x72);
+/// Pressed or selected widget background (dark signature teal).
+pub const ACTIVE: Color32 = Color32::from_rgb(0x1f, 0x5c, 0x59);
 /// Translucent background of controls floating over the viewport.
 pub const OVERLAY: Color32 = Color32::from_rgba_premultiplied(0x22, 0x25, 0x2a, 0xe6);
 
@@ -76,8 +78,8 @@ pub fn apply(ctx: &egui::Context) {
         v.extreme_bg_color = RECESSED;
         v.faint_bg_color = Color32::from_rgb(0x2a, 0x2d, 0x32);
         v.code_bg_color = RECESSED;
-        v.hyperlink_color = ACCENT;
-        v.warn_fg_color = HIGHLIGHT;
+        v.hyperlink_color = ACCENT_LIGHT;
+        v.warn_fg_color = Color32::from_rgb(0xe8, 0xb0, 0x4a);
         v.selection.bg_fill = ACTIVE;
         v.selection.stroke = Stroke::new(1.0, ACCENT);
 

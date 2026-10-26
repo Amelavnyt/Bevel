@@ -114,7 +114,7 @@ pub fn show(ui: &mut egui::Ui, viewport: egui::Rect, camera: &Camera) -> Option<
     for (face, facing, poly) in &visible {
         let shade = 0.78 + 0.22 * facing;
         let base = if hovered == Some(face.view) {
-            egui::Color32::from_rgb(0x7f, 0xb6, 0xea)
+            theme::ACCENT_LIGHT
         } else {
             egui::Color32::from_rgb(214, 222, 232).lerp_to_gamma(egui::Color32::BLACK, 1.0 - shade)
         };

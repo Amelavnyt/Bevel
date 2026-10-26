@@ -69,6 +69,10 @@ fn group_ui(ui: &mut egui::Ui, state: &mut UiState, group: ToolGroup) {
                 },
             );
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            // Group labels are flat until hovered.
+            let widgets = &mut ui.visuals_mut().widgets;
+            widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+            widgets.inactive.bg_stroke = egui::Stroke::NONE;
             egui::containers::menu::MenuButton::new(label).ui(ui, |ui| {
                 for tool in tools::in_group(group) {
                     let mut button = egui::Button::image_and_text(

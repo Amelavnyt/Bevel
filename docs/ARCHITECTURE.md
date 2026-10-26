@@ -398,7 +398,7 @@ View changes (standard views, Home, Fit All) are animated; any mouse navigation 
 
 ### Icons and theme
 
-Icons are SVGs in `assets/icons/`, drawn on a 32×32 grid in one style: isometric bodies in blue, the part an operation affects in orange, and light line icons for app commands. They are embedded with `include_image!` and rasterized by egui_extras' SVG loader (resvg, pure Rust) at the size they are shown. `bevel_ui::install` registers the loaders and applies the theme from `bevel-ui/src/theme.rs`. See [ADR-0015](DECISIONS.md#adr-0015-one-design-workspace-with-an-svg-icon-set).
+Icons are SVGs in `assets/icons/`, drawn on a 32×32 grid in one simple, flat style: isometric bodies in three tones of a light teal-grey with a single outline and no gradients, the part an operation affects in the accent green (`#77C89D`), and light line icons for app commands. The logo uses the signature teal (`#2D8985`). They are embedded with `include_image!` and rasterized by egui_extras' SVG loader (resvg, pure Rust) at the size they are shown. `bevel_ui::install` registers the loaders and applies the theme from `bevel-ui/src/theme.rs`: signature teal for selection, focus and toggled controls, the accent green for highlights. See [ADR-0015](DECISIONS.md#adr-0015-one-design-workspace-with-an-svg-icon-set).
 
 ### App state and tools
 
