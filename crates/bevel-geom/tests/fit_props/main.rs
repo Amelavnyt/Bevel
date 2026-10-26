@@ -10,6 +10,7 @@
 
 mod approximate;
 mod interpolate;
+mod loft;
 mod strategies;
 mod surface;
 mod surface_strategies;

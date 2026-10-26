@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Surface fitting: interpolation and least-squares approximation of a
-//! rectangular grid of points (The NURBS Book, sections 9.2.5 and 9.4.3).
+//! rectangular grid of points, and skinning of curves (The NURBS Book,
+//! sections 9.2.5, 9.4.3 and 10.3).
 //!
 //! The data is a grid `Q_{k,l}` with `k = 0, ..., n` along `u` (the rows)
 //! and `l = 0, ..., m` along `v` (the columns), stored row-major as a
@@ -61,16 +62,30 @@
 //! nested). With `count_u == rows` and `count_v == cols` the fit is the
 //! interpolation of A9.4 and the deviation is zero up to rounding.
 //!
+//! # Lofting
+//!
+//! [`loft`] skins a list of curves into a surface (section 10.3). The curves
+//! are first made compatible ([`make_compatible`]): same degree, domain and
+//! knot vector. A control point `P_{i}^k` of curve `k` then pairs with the
+//! control point `i` of every other curve, and each such family
+//! `P_0^i, ..., P_K^i` is interpolated along `v` as a curve. The `v`
+//! parameters are the averages, over the control point families, of the
+//! parametrization of the control polygons (section 10.3). Rational curves
+//! are interpolated in homogeneous coordinates `(w P, w)`, which is what
+//! makes the surface contain each curve exactly; a positive weight is not
+//! guaranteed in the interpolated net, and a surface with a weight that is
+//! not positive is rejected.
+//!
 //! All results are deterministic.
 
-use bevel_math::{DVec3, Point3};
+use bevel_math::{DVec3, DVec4, Point3};
 use nalgebra::DMatrix;
 
 use super::solve::{set, solve_least_squares, solve_square};
 use super::{COINCIDENT_TOLERANCE, FitPoint, Parametrization, averaging_knots};
 use crate::basis::basis_funs_raw;
 use crate::knots::check_degree;
-use crate::{GeomError, KnotVector, NurbsSurface};
+use crate::{GeomError, KnotVector, NurbsCurve3, NurbsSurface, make_compatible};
 
 /// The two directions of a grid: along the rows (`u`) or the columns (`v`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -495,6 +510,161 @@ pub fn approximate_surface(
     )
 }
 
+/// The control points of curves made compatible, as a grid with one row per
+/// control point index and one column per curve (`grid[i * K + k]`), and the
+/// compatible curves.
+fn loft_grid(curves: &[NurbsCurve3]) -> Result<(Vec<NurbsCurve3>, Vec<Point3>), GeomError> {
+    if curves.len() < 2 {
+        return Err(GeomError::InvalidArgument(
+            "a loft needs at least two curves",
+        ));
+    }
+    let compatible = make_compatible(curves)?;
+    let points: Vec<Vec<Point3>> = compatible.iter().map(NurbsCurve3::control_points).collect();
+    let count = points.first().map_or(0, Vec::len);
+    let grid = (0..count)
+        .flat_map(|i| points.iter().map(move |p| p.get(i).copied()))
+        .collect::<Option<Vec<Point3>>>()
+        .ok_or(GeomError::InvalidArgument(
+            "the compatible curves differ in size",
+        ))?;
+    Ok((compatible, grid))
+}
+
+/// The `v` parameters of a loft: one per curve, from 0 to 1 and strictly
+/// increasing, averaged over the control point families of the compatible
+/// curves (The NURBS Book, section 10.3).
+///
+/// These are the values at which [`loft`] places the curves: curve `k` of
+/// `curves` is the isocurve of the surface at `v = parameters[k]`. The
+/// parametrization of each family of corresponding control points follows
+/// `method`; families whose points all coincide are left out of the average.
+///
+/// # Errors
+///
+/// [`GeomError::InvalidArgument`] for fewer than two curves, or if every
+/// family of control points is a single point or the averaged parameters
+/// are not strictly increasing (for example two identical curves in a
+/// row); the errors of [`make_compatible`].
+pub fn loft_parameters(
+    curves: &[NurbsCurve3],
+    method: Parametrization,
+) -> Result<Vec<f64>, GeomError> {
+    let (compatible, grid) = loft_grid(curves)?;
+    direction_parameters(
+        &grid,
+        grid.len() / compatible.len().max(1),
+        compatible.len(),
+        Direction::V,
+        method,
+    )
+}
+
+/// A surface that contains the curves as isocurves in `v`, skinned through
+/// them with degree `degree_v` across (The NURBS Book, section 10.3).
+///
+/// The curves are made compatible with [`make_compatible`] (the common
+/// degree, domain of the first curve and knot vector are those of the
+/// result in `u`), and the corresponding control points of all curves are
+/// interpolated along `v` at the parameters [`loft_parameters`] gives, with
+/// the averaged knots of those parameters. The surface equals curve `k` at
+/// `v = loft_parameters(curves, method)[k]`, and is defined on the domain
+/// of the first curve in `u` and `[0, 1]` in `v`. If any curve is rational,
+/// the control points are interpolated in homogeneous coordinates and the
+/// surface is rational; otherwise it is not.
+///
+/// Needs at least `degree_v + 1` curves.
+///
+/// # Errors
+///
+/// [`GeomError::InvalidDegree`] for a degree outside `1..=MAX_DEGREE`;
+/// [`GeomError::InvalidArgument`] for too few curves or a `v` parametrization
+/// that cannot be assigned (see [`loft_parameters`]);
+/// [`GeomError::InvalidWeight`] if the interpolated net of a rational loft
+/// has a weight that is not positive; [`GeomError::NotConverged`] if the
+/// linear system is singular to working precision; the errors of
+/// [`make_compatible`].
+pub fn loft(
+    curves: &[NurbsCurve3],
+    degree_v: usize,
+    method: Parametrization,
+) -> Result<NurbsSurface, GeomError> {
+    check_degree(degree_v)?;
+    let (compatible, grid) = loft_grid(curves)?;
+    let count_v = compatible.len();
+    if count_v < degree_v + 1 {
+        return Err(GeomError::InvalidArgument(
+            "too few curves for the requested degree",
+        ));
+    }
+    let Some(first) = compatible.first() else {
+        return Err(GeomError::InvalidArgument(
+            "a loft needs at least two curves",
+        ));
+    };
+    let count_u = first.control_points().len();
+    let params_v = direction_parameters(&grid, count_u, count_v, Direction::V, method)?;
+    let rational = compatible.iter().any(NurbsCurve3::is_rational);
+    let width = if rational { 4 } else { 3 };
+    // One row per curve, `width` columns per control point index.
+    let flat: Vec<Vec<f64>> = compatible
+        .iter()
+        .map(|curve| {
+            if rational {
+                curve
+                    .control_weighted()
+                    .iter()
+                    .flat_map(|h| [h.x, h.y, h.z, h.w])
+                    .collect()
+            } else {
+                curve
+                    .control_points()
+                    .iter()
+                    .flat_map(|p| [p.x, p.y, p.z])
+                    .collect()
+            }
+        })
+        .collect();
+    let data = DMatrix::from_fn(count_v, width * count_u, |k, c| {
+        flat.get(k)
+            .and_then(|row| row.get(c))
+            .copied()
+            .unwrap_or(0.0)
+    });
+    let (knots_v, along_v) = fit_lines(&data, &params_v, degree_v, count_v)?;
+    let net = |i: usize, j: usize, a: usize| at(&along_v, j, width * i + a);
+    if rational {
+        let control: Vec<DVec4> = (0..count_u)
+            .flat_map(|i| {
+                (0..count_v).map(move |j| {
+                    DVec4::new(net(i, j, 0), net(i, j, 1), net(i, j, 2), net(i, j, 3))
+                })
+            })
+            .collect();
+        NurbsSurface::new(
+            first.degree(),
+            degree_v,
+            first.knots().clone(),
+            knots_v,
+            control,
+        )
+    } else {
+        let control: Vec<Point3> = (0..count_u)
+            .flat_map(|i| {
+                (0..count_v).map(move |j| DVec3::new(net(i, j, 0), net(i, j, 1), net(i, j, 2)))
+            })
+            .collect();
+        NurbsSurface::from_points(
+            first.degree(),
+            degree_v,
+            first.knots().clone(),
+            knots_v,
+            &control,
+            None,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -803,6 +973,71 @@ mod tests {
         ));
         assert!(matches!(
             approximate_surface(&grid, 5, 6, 3, 3, 4, 7, m),
+            Err(GeomError::InvalidArgument(_))
+        ));
+    }
+
+    #[test]
+    fn loft_contains_its_curves() {
+        let curve = |z: f64, bend: f64| {
+            let kv = KnotVector::clamped_uniform(2, 4).unwrap();
+            let pts = [
+                DVec3::new(0.0, 0.0, z),
+                DVec3::new(1.0, bend, z + 0.2),
+                DVec3::new(2.0, -bend, z),
+                DVec3::new(3.0, 0.5, z - 0.1),
+            ];
+            NurbsCurve3::from_points(2, kv, &pts, None).unwrap()
+        };
+        let curves = [
+            curve(0.0, 1.0),
+            curve(1.0, 0.5),
+            curve(2.5, -1.0),
+            curve(3.0, 2.0),
+        ];
+        for method in METHODS {
+            let vs = loft_parameters(&curves, method).unwrap();
+            assert_eq!(vs.len(), curves.len());
+            for degree_v in 1..=3 {
+                let s = loft(&curves, degree_v, method).unwrap();
+                assert_eq!(s.degree_v(), degree_v);
+                assert!(!s.is_rational());
+                for (c, &v) in curves.iter().zip(&vs) {
+                    for i in 0..=20 {
+                        let (a, b) = c.domain();
+                        let t = a + (b - a) * f64::from(i) / 20.0;
+                        assert!((s.point(t, v) - c.point(t)).length() < 1e-10);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn loft_rejects_bad_input() {
+        let kv = KnotVector::clamped_uniform(1, 2).unwrap();
+        let c = NurbsCurve3::from_points(1, kv, &[DVec3::ZERO, DVec3::X], None).unwrap();
+        let m = Parametrization::ChordLength;
+        assert!(matches!(
+            loft(&[], 1, m),
+            Err(GeomError::InvalidArgument(_))
+        ));
+        assert!(matches!(
+            loft(std::slice::from_ref(&c), 1, m),
+            Err(GeomError::InvalidArgument(_))
+        ));
+        let d = c.clone();
+        assert!(matches!(
+            loft(&[c.clone(), d.clone()], 2, m),
+            Err(GeomError::InvalidArgument(_))
+        ));
+        assert!(matches!(
+            loft(&[c.clone(), d.clone()], 0, m),
+            Err(GeomError::InvalidDegree { degree: 0 })
+        ));
+        // Two identical curves cannot be told apart.
+        assert!(matches!(
+            loft(&[c, d], 1, m),
             Err(GeomError::InvalidArgument(_))
         ));
     }

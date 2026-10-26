@@ -31,7 +31,8 @@
 //!   end tangents, and least-squares approximation with a tolerance search
 //!   (section 9.4.1).
 //! - [`fit`] also fits surfaces: grid parameters (section 9.2.5), global
-//!   surface interpolation (A9.4) and two-pass least-squares approximation.
+//!   surface interpolation (A9.4), two-pass least-squares approximation, and
+//!   lofting of compatible curves (section 10.3).
 //! - [`conics`]: exact circular and elliptical arcs (A7.1) and open conic
 //!   arcs through a point (A7.2, A7.3) as rational quadratics.
 //! - [`NurbsSurface`]: construction, evaluation and partial derivatives
