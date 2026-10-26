@@ -69,8 +69,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask check-commits "origin/${{ github.base_ref }}..HEAD"
 
+  # Job names with matrix values show unexpanded when the job is skipped,
+  # so this job keeps its id as its name ("platforms (windows-latest)").
   platforms:
-    name: build and test (${{ matrix.os }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
     strategy:
       fail-fast: false
