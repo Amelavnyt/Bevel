@@ -17,12 +17,19 @@
 //!
 //! All three work on the homogeneous control points, so they apply to
 //! rational curves unchanged. Knot removal measures its deviation in
-//! homogeneous space; a homogeneous deviation `d` bounds the model-space
-//! deviation by `d (1 + max |P_i|) / min w_i` to first order (The NURBS
-//! Book, eq. 5.30), and by `d / w` exactly for a non-rational curve with
-//! weight `w`. Unlike A5.8, which tests each removal against the tolerance
-//! on its own, the bounds of successive removals are summed, so the total
-//! deviation stays within the tolerance.
+//! homogeneous space. If the homogeneous curve `(A, W)` moves by at most
+//! `da` in its point part and `dw` in its weight, the projected curve
+//! `C = A / W` moves by at most `(da + max |C| dw) / W~` with `W~` the new
+//! weight function, since `C~ - C = (dA - C dW) / W~`. With `max |C| <=
+//! max |P_i|` and `W~ >= min w_i` this gives the model-space bound used
+//! here (`ModelBound`); it is the book's eq. 5.30 with the point and
+//! weight parts kept apart, which is much tighter when the weights barely
+//! change. For a non-rational curve `dw` is zero and the bound is exact.
+//! The minimum weight is taken from the curve before removal, so for
+//! rational curves the bound is first order, as in the book. Unlike A5.8,
+//! which tests each removal against the tolerance on its own, the bounds of
+//! successive removals are summed, so the total deviation stays within the
+//! tolerance.
 
 use crate::{GeomError, Homogeneous, KnotVector, NurbsCurve};
 
@@ -108,10 +115,10 @@ impl<H: Homogeneous> NurbsCurve<H> {
             return unchanged();
         };
         let s = self.knots.multiplicity(u);
-        let factor = self.homogeneous_error_factor();
+        let scale = ModelBound::of(&self.control);
         let mut used = 0.0;
-        let mut accept = |d: f64| {
-            let e = d * factor;
+        let mut accept = |d: H| {
+            let e = scale.bound_of(d);
             if used + e <= tol {
                 used += e;
                 true
@@ -152,25 +159,49 @@ impl<H: Homogeneous> NurbsCurve<H> {
             Err(GeomError::ParameterOutOfDomain { t: u })
         }
     }
+}
 
-    /// Converts a homogeneous deviation bound into a model-space one (see
-    /// the module documentation).
-    pub(crate) fn homogeneous_error_factor(&self) -> f64 {
-        let w_min = self
-            .control
-            .iter()
-            .map(|c| c.weight())
-            .fold(f64::INFINITY, f64::min);
-        if self.rational {
-            let p_max = self
-                .control
+/// Converts deviations of the homogeneous curve into model-space bounds
+/// (see the module documentation).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ModelBound {
+    /// Largest distance of a control point from the origin.
+    p_max: f64,
+    /// Smallest weight.
+    w_min: f64,
+}
+
+impl ModelBound {
+    /// The bound for a curve with control points `control`, using the
+    /// smallest weight of `weights_from` (the curve after the change, when
+    /// it is known).
+    pub(crate) fn with_weights<H: Homogeneous>(control: &[H], weights_from: &[H]) -> Self {
+        Self {
+            p_max: control
                 .iter()
                 .map(|c| H::point_length(c.project()))
-                .fold(0.0, f64::max);
-            (1.0 + p_max) / w_min
-        } else {
-            1.0 / w_min
+                .fold(0.0, f64::max),
+            w_min: weights_from
+                .iter()
+                .map(|c| c.weight())
+                .fold(f64::INFINITY, f64::min),
         }
+    }
+
+    /// The bound for a curve with these control points.
+    pub(crate) fn of<H: Homogeneous>(control: &[H]) -> Self {
+        Self::with_weights(control, control)
+    }
+
+    /// The model-space bound for a homogeneous deviation with point part
+    /// `da` and weight part `dw`.
+    pub(crate) fn bound(self, da: f64, dw: f64) -> f64 {
+        (da + self.p_max * dw) / self.w_min
+    }
+
+    /// The model-space bound for the homogeneous deviation vector `d`.
+    pub(crate) fn bound_of<H: Homogeneous>(self, d: H) -> f64 {
+        self.bound(H::point_length(d.weighted()), d.weight().abs())
     }
 }
 
@@ -264,7 +295,7 @@ fn refine_raw<H: Homogeneous>(
 }
 
 /// A5.8: removes the knot `u` (last index `r`, multiplicity `s`) up to `num`
-/// times, asking `accept` with the homogeneous deviation bound of each
+/// times, asking `accept` with the homogeneous deviation vector of each
 /// removal whether to go ahead. Returns the new knots, control points and
 /// the number of removals.
 ///
@@ -280,7 +311,7 @@ pub(crate) fn remove_raw<H: Homogeneous>(
     r: usize,
     s: usize,
     num: usize,
-    accept: &mut dyn FnMut(f64) -> bool,
+    accept: &mut dyn FnMut(H) -> bool,
 ) -> (Vec<f64>, Vec<H>, usize) {
     let mut uk = knots.to_vec();
     let mut pw = pw.to_vec();
@@ -310,10 +341,10 @@ pub(crate) fn remove_raw<H: Homogeneous>(
             jj -= 1;
         }
         let deviation = if j < i + t {
-            H::distance(temp[ii - 1], temp[jj + 1])
+            temp[ii - 1] - temp[jj + 1]
         } else {
             let alfi = (u - uk[i]) / (uk[i + ord + t] - uk[i]);
-            H::distance(pw[i], temp[ii + t + 1] * alfi + temp[ii - 1] * (1.0 - alfi))
+            pw[i] - (temp[ii + t + 1] * alfi + temp[ii - 1] * (1.0 - alfi))
         };
         if !deviation.is_finite() || !accept(deviation) {
             break;
@@ -437,6 +468,54 @@ mod tests {
             .zip(inserted.control_weighted())
         {
             assert!((*a - *b).length() < 1e-13);
+        }
+    }
+
+    /// Found by the property tests: a knot inserted four times right next to
+    /// a triple knot of a rational quartic. Removing it again is
+    /// ill-conditioned, and bounding the homogeneous deviation by
+    /// `d (1 + max |P|) / min w` overestimated the model-space error a
+    /// hundredfold, so the last removal was refused.
+    #[test]
+    #[allow(clippy::unreadable_literal)]
+    fn removal_bound_keeps_point_and_weight_parts_apart() {
+        let knots = KnotVector::new(
+            vec![
+                8.148539022648709,
+                8.148539022648709,
+                8.148539022648709,
+                8.148539022648709,
+                8.148539022648709,
+                10.437677148502258,
+                10.437677148502258,
+                10.437677148502258,
+                10.614203679240932,
+                12.058965514897007,
+                12.058965514897007,
+                14.170110624319278,
+                14.814780300040834,
+                14.814780300040834,
+                14.814780300040834,
+                17.083424459540247,
+                17.083424459540247,
+                17.083424459540247,
+                17.083424459540247,
+                17.083424459540247,
+            ],
+            4,
+        )
+        .unwrap();
+        let mut control = vec![bevel_math::DVec4::new(0.0, 0.0, 0.0, 0.2); 15];
+        control[11] = bevel_math::DVec4::new(0.0, -74.6231994142235, 0.0, 1.5700243083734513);
+        control[12] = bevel_math::DVec4::new(0.0, -3.0416488004882005, 0.0, 0.2);
+        let c = NurbsCurve3::new(4, knots, control).unwrap();
+        let u = 14.818471589600048;
+        let d = c.insert_knot(u, 4).unwrap();
+        let (e, removed) = d.remove_knot(u, 4, 1e-8);
+        assert_eq!(removed, 4);
+        for i in 0..=100 {
+            let t = 8.15 + 8.9 * f64::from(i) / 100.0;
+            assert!((e.point(t) - c.point(t)).length() < 1e-8);
         }
     }
 

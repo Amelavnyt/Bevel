@@ -23,17 +23,18 @@
 //!    its original multiplicity minus one, which restores the original
 //!    continuity in the lower degree.
 //!
-//! Each step has a rigorous bound on how far it moves the homogeneous curve:
-//! for a segment, the largest distance between its control points and those
-//! of the reduced segment elevated back (the difference of two Bezier curves
-//! of the same degree lies in the convex hull of the control-point
-//! differences); for a knot removal, the A5.8 deviation. Removals only move
-//! the curve within `p` spans of the knot, so the bounds are accumulated per
-//! segment as A5.11 does. A homogeneous bound `d` becomes the model-space
-//! bound `d (1 + max |P_i|) / min w~_i`, with `P_i` the original control
-//! points and `w~_i` the reduced weights.
+//! Each step has a rigorous bound on how far it moves the homogeneous curve,
+//! kept separately for the point part and the weight: for a segment, the
+//! largest difference between its control points and those of the reduced
+//! segment elevated back (the difference of two Bezier curves of the same
+//! degree lies in the convex hull of the control-point differences); for a
+//! knot removal, the A5.8 deviation. Removals only move the curve within `p`
+//! spans of the knot, so the bounds are accumulated per segment as A5.11
+//! does. Point and weight bounds `da`, `dw` become the model-space bound
+//! `(da + max |P_i| dw) / min w~_i`, with `P_i` the original control points
+//! and `w~_i` the reduced weights (see the knot removal module for why).
 
-use super::knot_ops::remove_raw;
+use super::knot_ops::{ModelBound, remove_raw};
 use crate::{GeomError, Homogeneous, KnotVector, MAX_DEGREE, NurbsCurve};
 
 impl<H: Homogeneous> NurbsCurve<H> {
@@ -119,9 +120,10 @@ impl<H: Homogeneous> NurbsCurve<H> {
             let Some(r) = kv.last_index_of(u) else {
                 continue;
             };
-            let mut bound = 0.0;
-            let mut accept = |d: f64| {
-                bound += d;
+            let mut bound = (0.0, 0.0);
+            let mut accept = |d: H| {
+                bound.0 += H::point_length(d.weighted());
+                bound.1 += d.weight().abs();
                 true
             };
             let (k, ctrl, removed) =
@@ -135,31 +137,22 @@ impl<H: Homogeneous> NurbsCurve<H> {
             control = ctrl;
             let seg = bi + 1;
             for e in &mut errors[seg.saturating_sub(p)..(seg + p).min(segments.len())] {
-                *e += bound;
+                e.0 += bound.0;
+                e.1 += bound.1;
             }
         }
 
         // Convert the worst homogeneous bound to model space.
-        let w_min = control
-            .iter()
-            .map(|c| c.weight())
-            .fold(f64::INFINITY, f64::min);
-        if !(w_min > 0.0 && control.iter().all(|c| c.is_finite())) {
+        if !control.iter().all(|c| c.is_finite() && c.weight() > 0.0) {
             return Err(GeomError::ToleranceNotMet {
                 error: f64::INFINITY,
             });
         }
-        let worst = errors.iter().copied().fold(0.0, f64::max);
-        let error = if c.rational {
-            let p_max = c
-                .control
-                .iter()
-                .map(|c| H::point_length(c.project()))
-                .fold(0.0, f64::max);
-            worst * (1.0 + p_max) / w_min
-        } else {
-            worst / w_min
-        };
+        let scale = ModelBound::with_weights(&c.control, &control);
+        let error = errors
+            .iter()
+            .map(|&(da, dw)| scale.bound(da, dw))
+            .fold(0.0, f64::max);
         if error > tol {
             return Err(GeomError::ToleranceNotMet { error });
         }
@@ -337,10 +330,10 @@ fn elevate_raw<H: Homogeneous>(
 
 /// Reduces a Bezier segment of degree `p >= 2` (`p + 1` homogeneous points)
 /// to degree `p - 1` (The NURBS Book, eqs. 5.41-5.43). Returns the `p`
-/// reduced points and a bound on the homogeneous deviation: the largest
-/// distance between the original points and the reduced points elevated
-/// back to degree `p`.
-fn reduce_bezier<H: Homogeneous>(pts: &[H]) -> (Vec<H>, f64) {
+/// reduced points and bounds on the homogeneous deviation, for the point
+/// part and the weight: the largest differences between the original points
+/// and the reduced points elevated back to degree `p`.
+fn reduce_bezier<H: Homogeneous>(pts: &[H]) -> (Vec<H>, (f64, f64)) {
     let p = pts.len() - 1;
     let pf = p as f64;
     let r = (p - 1) / 2;
@@ -364,7 +357,7 @@ fn reduce_bezier<H: Homogeneous>(pts: &[H]) -> (Vec<H>, f64) {
         q[r] = (q[r] + right) * 0.5;
     }
     // Elevate back and compare.
-    let mut err: f64 = 0.0;
+    let mut err = (0.0_f64, 0.0_f64);
     for (i, &pi) in pts.iter().enumerate() {
         let alpha = i as f64 / pf;
         let e = match i {
@@ -372,7 +365,9 @@ fn reduce_bezier<H: Homogeneous>(pts: &[H]) -> (Vec<H>, f64) {
             _ if i == p => q[p - 1],
             _ => q[i - 1] * alpha + q[i] * (1.0 - alpha),
         };
-        err = err.max(H::distance(pi, e));
+        let d = pi - e;
+        err.0 = err.0.max(H::point_length(d.weighted()));
+        err.1 = err.1.max(d.weight().abs());
     }
     (q, err)
 }
