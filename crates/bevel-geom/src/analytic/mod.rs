@@ -28,8 +28,27 @@
 //!   the major radius `a` along `x` and the minor radius `b <= a` along
 //!   `y`; `t` is the eccentric angle. Periodic with period `2 pi`.
 //!
-//! The domain of a curve is a [`Domain`]. Evaluation accepts any finite
-//! parameter: periodic curves repeat, lines extend forever.
+//! Surfaces (each module documents its normal, curvatures and degenerate
+//! closest points):
+//!
+//! - [`Plane`]: `S(u, v) = o + u x + v y`, both unbounded; normal `z`.
+//! - [`Cylinder`]: `S(u, v) = o + r e(u) + v z`; `u` periodic, `v` the
+//!   height, unbounded.
+//! - [`Cone`]: `S(u, v) = o + (r0 + v tan(alpha)) e(u) + v z` with the
+//!   radius `r0` at `v = 0` and the half-angle `alpha` in `(0, pi / 2)`;
+//!   `v` is the distance along the axis, unbounded (the double cone), and
+//!   the apex is at `v = -r0 / tan(alpha)`.
+//! - [`Sphere`]: `S(u, v) = o + r (cos(v) e(u) + sin(v) z)`; `u` the
+//!   longitude, periodic, `v` the latitude in `[-pi / 2, pi / 2]`.
+//! - [`Torus`]: `S(u, v) = o + (R + r cos(v)) e(u) + r sin(v) z` with
+//!   `R > r > 0`; both angles periodic.
+//!
+//! The normals of the closed surfaces (and of cylinders and cones) point
+//! away from the axis or centre; that of a plane is its frame's `z` axis.
+//!
+//! The domain of a curve, or of a surface in each direction, is a
+//! [`Domain`]. Evaluation accepts any finite parameter: periodic
+//! parameters repeat, unbounded ones extend forever.
 //!
 //! # Conventions shared with the NURBS types
 //!
@@ -38,20 +57,41 @@
 //! [`MAX_DERIVATIVE_ORDER`]), closest points are
 //! [`ClosestPoint`]s, and the signed curvature of a planar curve is
 //! positive where it turns counter-clockwise, as for
-//! [`NurbsCurve2::curvature`].
+//! [`NurbsCurve2::curvature`]. Surface derivatives come in the layout of
+//! [`NurbsSurface::derivatives`], closest points are
+//! [`SurfaceClosestPoint`]s, and principal curvatures are [`Curvatures`]
+//! with the same sign convention as
+//! [`NurbsSurface::principal_curvatures`]: positive where the surface bends
+//! towards the normal, so a sphere with its outward normal has both
+//! curvatures `-1 / r`.
 //!
 //! [`NurbsCurve::derivatives`]: crate::NurbsCurve::derivatives
 //! [`NurbsCurve2::curvature`]: crate::NurbsCurve2::curvature
 //! [`MAX_DERIVATIVE_ORDER`]: crate::MAX_DERIVATIVE_ORDER
 //! [`ClosestPoint`]: crate::ClosestPoint
+//! [`NurbsSurface::derivatives`]: crate::NurbsSurface::derivatives
+//! [`NurbsSurface::principal_curvatures`]: crate::NurbsSurface::principal_curvatures
+//! [`SurfaceClosestPoint`]: crate::SurfaceClosestPoint
+//! [`Curvatures`]: crate::Curvatures
 
 mod circle;
+mod cone;
+mod cylinder;
 mod ellipse;
 mod line;
+mod plane;
+mod revolved;
+mod sphere;
+mod torus;
 
 pub use circle::{Circle2, Circle3};
+pub use cone::Cone;
+pub use cylinder::Cylinder;
 pub use ellipse::{Ellipse2, Ellipse3};
 pub use line::{Line2, Line3};
+pub use plane::Plane;
+pub use sphere::Sphere;
+pub use torus::Torus;
 
 use std::f64::consts::{PI, TAU};
 

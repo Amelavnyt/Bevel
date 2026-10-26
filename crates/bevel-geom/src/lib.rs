@@ -52,6 +52,11 @@
 //!   [`Ellipse3`]) with closed-form points, derivatives, tangents,
 //!   curvature, closest points (Eberly's bisection for ellipses) and exact
 //!   bounding boxes of arcs; parameter domains as [`Domain`]s.
+//! - Analytic surfaces: [`Plane`], [`Cylinder`], [`Cone`] (the double
+//!   cone), [`Sphere`] and ring [`Torus`] with closed-form points, partial
+//!   derivatives of any order, outward normals, principal curvatures (the
+//!   sign convention of [`Curvatures`]), closest points, isocurves as lines
+//!   and circles, and exact bounding boxes of patches.
 //!
 //! The curve arc length still uses a local copy of the Gauss-Legendre
 //! rules; the closest-point iterations keep their own Newton loops, since
@@ -72,7 +77,10 @@ mod homogeneous;
 mod knots;
 mod nurbs;
 
-pub use analytic::{Circle2, Circle3, Domain, Ellipse2, Ellipse3, Line2, Line3};
+pub use analytic::{
+    Circle2, Circle3, Cone, Cylinder, Domain, Ellipse2, Ellipse3, Line2, Line3, Plane, Sphere,
+    Torus,
+};
 pub use conics::{circle_arc, circle_arc_2d, conic_arc, ellipse_arc, ellipse_arc_2d};
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;

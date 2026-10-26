@@ -6,8 +6,8 @@ use std::f64::consts::TAU;
 use std::fmt::Debug;
 use std::ops::{Add, Mul, Sub};
 
-use bevel_geom::ClosestPoint;
-use bevel_math::{DQuat, DVec2, DVec3, Frame3, Point2, Point3};
+use bevel_geom::{ClosestPoint, Curvatures, SurfaceClosestPoint};
+use bevel_math::{DQuat, DVec2, DVec3, Frame3, Point2, Point3, Vector3};
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
@@ -187,4 +187,106 @@ pub fn check_bounds<P: Pt>(min: P, max: P, points: &[P], slack: f64) -> Result<(
         );
     }
     Ok(())
+}
+
+/// The closed forms of a surface under test.
+pub struct SurfaceCase<'a> {
+    /// The point at `(u, v)`.
+    pub point: &'a dyn Fn(f64, f64) -> Point3,
+    /// The partial derivatives up to a total order.
+    pub ders: &'a dyn Fn(f64, f64, usize) -> Vec<Vec<Vector3>>,
+    /// The first partials.
+    pub partials: &'a dyn Fn(f64, f64) -> (Vector3, Vector3),
+    /// The unit normal.
+    pub normal: &'a dyn Fn(f64, f64) -> Option<Vector3>,
+    /// The principal curvatures.
+    pub curvatures: &'a dyn Fn(f64, f64) -> Option<Curvatures>,
+    /// The closest point.
+    pub closest: &'a dyn Fn(Point3) -> SurfaceClosestPoint,
+    /// The length scale of the surface (its largest radius, or 1).
+    pub scale: f64,
+}
+
+/// Partial derivatives against central differences, the normal against
+/// `S_u x S_v`, and the principal curvatures against the normal curvature
+/// `II(t, t)` along their directions, at `(u, v)` (away from singular
+/// points of the parametrization).
+pub fn check_surface_differentials(c: &SurfaceCase, u: f64, v: f64) -> Result<(), TestCaseError> {
+    let h = 1e-5;
+    let d = (c.ders)(u, v, 3);
+    prop_assert_eq!(d.len(), 4);
+    prop_assert!((d[0][0] - (c.point)(u, v)).length() <= 1e-14 * c.scale.max(200.0));
+    let (su, sv) = (c.partials)(u, v);
+    prop_assert!((su - d[1][0]).length() <= 1e-14 * c.scale.max(1.0));
+    prop_assert!((sv - d[0][1]).length() <= 1e-14 * c.scale.max(1.0));
+    let (dup, dum) = ((c.ders)(u + h, v, 2), (c.ders)(u - h, v, 2));
+    let (dvp, dvm) = ((c.ders)(u, v + h, 2), (c.ders)(u, v - h, 2));
+    for k in 0..=2 {
+        for l in 0..=2 - k {
+            let tol = 1e-8 * (c.scale + d[k][l].length());
+            let fu = (dup[k][l] - dum[k][l]) * (0.5 / h);
+            prop_assert!(
+                (fu - d[k + 1][l]).length() <= tol,
+                "d/du of S^({k},{l}) at ({u}, {v}): {:?} vs {:?}",
+                d[k + 1][l],
+                fu
+            );
+            let fv = (dvp[k][l] - dvm[k][l]) * (0.5 / h);
+            prop_assert!(
+                (fv - d[k][l + 1]).length() <= tol,
+                "d/dv of S^({k},{l}) at ({u}, {v}): {:?} vs {:?}",
+                d[k][l + 1],
+                fv
+            );
+        }
+    }
+    let n = (c.normal)(u, v).unwrap();
+    let cross = su.cross(sv);
+    prop_assert!((n - cross / cross.length()).length() <= 1e-9);
+    let k = (c.curvatures)(u, v).unwrap();
+    prop_assert!(k.k1 >= k.k2);
+    prop_assert!(k.dir1.dot(n).abs() <= 1e-12 && k.dir2.dot(n).abs() <= 1e-12);
+    prop_assert!((k.dir1.cross(k.dir2) - n).length() <= 1e-12);
+    let (e, f, g) = (su.dot(su), su.dot(sv), sv.dot(sv));
+    let (l2, m2, n2) = (d[2][0].dot(n), d[1][1].dot(n), d[0][2].dot(n));
+    let det = e * g - f * f;
+    let normal_curvature = |t: Vector3| {
+        let (a, b) = (t.dot(su), t.dot(sv));
+        let alpha = (a * g - b * f) / det;
+        let beta = (b * e - a * f) / det;
+        l2 * alpha * alpha + 2.0 * m2 * alpha * beta + n2 * beta * beta
+    };
+    let scale = k.k1.abs().max(k.k2.abs()).max(1.0 / c.scale);
+    for (dir, expected) in [(k.dir1, k.k1), (k.dir2, k.k2)] {
+        let got = normal_curvature(dir);
+        prop_assert!(
+            (got - expected).abs() <= 1e-9 * scale,
+            "normal curvature {got} vs principal {expected} at ({u}, {v})"
+        );
+    }
+    Ok(())
+}
+
+/// The closest point to `target` against a grid of sampled parameters.
+pub fn check_surface_closest(
+    c: &SurfaceCase,
+    target: Point3,
+    us: &[f64],
+    vs: &[f64],
+) -> Result<SurfaceClosestPoint, TestCaseError> {
+    let cp = (c.closest)(target);
+    let size = c.scale.max(300.0);
+    prop_assert!(((c.point)(cp.u, cp.v) - cp.point).length() <= 1e-12 * size);
+    prop_assert!(((target - cp.point).length() - cp.distance).abs() <= 1e-12 * size);
+    for &u in us {
+        for &v in vs {
+            let d = ((c.point)(u, v) - target).length();
+            prop_assert!(
+                cp.distance <= d + 1e-9 * size,
+                "closest distance {} but the sample at ({u}, {v}) is at {d}",
+                cp.distance
+            );
+        }
+    }
+    Ok(cp)
 }
