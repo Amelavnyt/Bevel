@@ -1,0 +1,20 @@
+[package]
+name = "bevel-model"
+description = "Parts, features and regeneration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bevel-math.workspace = true
+bevel-geom.workspace = true
+bevel-kernel.workspace = true
+bevel-sketch.workspace = true
+bevel-expr.workspace = true
+bevel-timeline.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "bevel-script"
+description = "Rhai scripting: macros and script features"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bevel-doc.workspace = true
+bevel-model.workspace = true
+bevel-kernel.workspace = true
