@@ -1,0 +1,83 @@
+# Kernel conventions
+
+This document collects the conventions that every piece of geometry code in Bevel follows, plus the robustness log for the kernel. The overall design is in [ARCHITECTURE.md](ARCHITECTURE.md); the reasoning behind the main choices is in [DECISIONS.md](DECISIONS.md).
+
+## Units
+
+Internal length is the millimetre and angle is the radian. All geometry is `f64`; `f32` is used only for GPU buffers. Display units (mm, cm, m, in) affect only the UI and the default unit of expressions, so nothing in the kernel converts units.
+
+## Tolerances
+
+Tolerance constants live in `crates/bevel-math/src/tol.rs`:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `LINEAR` | 1e-6 mm | Two points closer than this are the same point |
+| `ANGULAR` | 1e-11 rad | Two directions closer than this are parallel |
+| `MODEL_EXTENT` | 1e5 mm | Half-size of the modeling space; geometry outside `[-MODEL_EXTENT, MODEL_EXTENT]` on any axis, or non-finite, is rejected with a clear error |
+
+Rules:
+
+- Never compare floats with `==`. Use the helpers in `bevel_math::tol` (`eq_length`, `eq_point`, `parallel`, `in_model_space`, and the ones added later).
+- Parametric tolerances are derived per curve or surface from `LINEAR` and the local parametric speed, not hard-coded.
+- Edges and vertices carry their own tolerance, which is needed for imported STEP data. Healing may merge vertices within tolerance but must not widen a tolerance silently; a body that needs a larger tolerance than the operation allows is reported as an issue.
+- Library code returns typed errors for out-of-range input; it never panics.
+
+## NURBS first, analytic fast paths second
+
+Every curve and surface is exactly representable as rational NURBS, and every algorithm has a correct general-NURBS implementation first. Analytic types (line, circle, ellipse, plane, cylinder, cone, sphere, torus) keep their identity so they can be intersected, measured and exported exactly. Analytic fast paths (plane-plane, plane-quadric, sphere-sphere, coaxial cases) are optional optimizations and each one is cross-checked against the general NURBS path in tests. Helices and offsets are not exactly NURBS: they are approximated within tolerance and the error bound is recorded.
+
+## Operations
+
+Kernel operations share one signature shape:
+
+```rust
+fn op(inputs, opts, tag: OpTag, cx: &mut OpContext) -> Result<OpOutput, KernelError>
+```
+
+This is a planned design. `OpOutput { bodies, history }` returns the resulting bodies and a map from each new entity to what it was generated or modified from. `OpContext` carries tolerances, a cancellation token and debug-dump settings. `OpTag` is an opaque `u64` supplied by the caller (`bevel-model` passes the `FeatureId`), so the kernel can name what it creates without knowing about features. Operations that cut or add through an intermediate volume also return that tool body, so feature patterns can reuse it. Long loops check the cancellation token.
+
+## Boolean pipeline
+
+Union, subtract and intersect (one target against many tools) run in these stages:
+
+1. Broad phase: a face BVH yields candidate face pairs.
+2. Face-face surface intersection produces curves and pcurves, clipped to each face's trimmed domain by 2D classification against the loops using robust predicates.
+3. Imprint: edges and faces are split along the curves, using a 2D arrangement in each face's parameter space.
+4. Classify each fragment as IN, OUT or ON the other body, using multi-ray point-in-solid tests with tolerance.
+5. Select fragments for the operation and flip orientation where needed (subtract).
+6. Sew the selected fragments into shells, merging same-domain faces (for example coplanar pieces) and redundant edges.
+7. Heal and validate. On failure the operation returns `KernelError::Boolean { stage, .. }` together with a debug dump; it never returns a broken body.
+
+Coplanar faces, contact along an edge or at a vertex, coaxial cylinders, tangent spheres and near-tolerance slivers are each a named test case from the first boolean commit.
+
+## Persistent naming
+
+Every face, edge and vertex carries a `TopoName` derived from how it was created: `Generated` (from an operation, a source and a role), `Modified` (a fragment of an older entity), `Merged` (a same-domain merge) or `Between` (an edge or vertex named by its adjacent faces). Fragment indices come from a canonical, deterministic geometric ordering so names are stable across rebuilds. `bevel-model` stores references as `EntityRef` (a `TopoName` plus a geometric hint) and resolves them by exact name, then by hint, then through the lineage, otherwise reporting the reference as lost. Kernel operations are required to produce names and a history map; an operation that cannot is incomplete. A regression suite covers edits that split or merge faces underneath dependent features.
+
+## Robustness program
+
+- Every kernel failure can dump its inputs (bodies, operation and options) to a `bevel-debug-*.json` file, which can be replayed with `bevel-cli kernel-repro <file>`.
+- Property tests (`proptest`) apply random primitives under random transforms and check that results validate and that volume identities hold: `V(A union B) = V(A) + V(B) - V(A intersect B)` and `V(A - B) = V(A) - V(A intersect B)`.
+- `validate(&Body)` is run on results in debug builds and tests. It checks closed 2-manifold shells, consistent orientation, loop closure, pcurve and 3D curve agreement, vertices on their edges, Euler-Poincare and, in debug and tests only, absence of self-intersections.
+- Every kernel bug becomes a regression test and gets a row in the robustness log below.
+
+## Robustness log
+
+Add a row for each kernel bug, newest last. The regression test column names the test that fails without the fix.
+
+| Date | Case | Cause | Fix | Regression test |
+|---|---|---|---|---|
+
+## Algorithm notes
+
+References for the kernel and geometry crates. Source code is only ported from GPL-compatible projects, with attribution and the original notices kept; otherwise implementations are written from the books and papers.
+
+- Piegl and Tiller, *The NURBS Book* (2nd ed.): NURBS algorithms. Doc comments cite algorithm numbers.
+- Patrikalakis and Maekawa, *Shape Interrogation for Computer Aided Design and Manufacturing*: intersections, offsets, robustness.
+- Hoffmann, *Geometric and Solid Modeling*: booleans and robustness.
+- Mantyla, *An Introduction to Solid Modeling*, and Stroud, *Boundary Representation Modelling Techniques*: B-rep data structures and Euler operators.
+- Shewchuk, *Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates*: the basis of the orient and incircle predicates.
+- Barnhill and Kersey, *A marching method for parametric surface/surface intersection*: surface-surface intersection tracing.
+- Wang et al., *Computation of Rotation Minimizing Frames*: the double reflection method used for sweeps.
+- Truck and Fornjot are Rust kernels worth reading for ideas.

@@ -1,0 +1,5 @@
+# File format
+
+This is a stub. The `.bevel` format is planned as a ZIP container (pure-Rust deflate only) holding `manifest.json` (format name, `format_version`, app version and HEAD), `objects/<hash>` (JSON definitions of features, sketches, parameter tables and body blobs, the latter as JSON or compact binary), `refs/heads/*` and `refs/tags/*` (branches and named versions), and `working.json` (the uncommitted working state), with a `thumbnail.png` to follow later. Objects are content-addressed, so unchanged objects are shared between versions. The format is versioned from the start: every change bumps `format_version` and ships a migration plus a fixture test that loads every past version. `bevel-cli unpack` and `pack` convert to and from a plain directory for debugging and git-friendly storage. See [ARCHITECTURE.md](ARCHITECTURE.md) and [ADR-0007](DECISIONS.md#adr-0007-content-addressed-object-store-bevel-is-a-versioned-zip).
+
+The full specification will be written during the "Document & timeline" phase (see [ROADMAP.md](ROADMAP.md)).
