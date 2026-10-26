@@ -1,0 +1,67 @@
+# Bevel
+
+Bevel is an open-source, parametric, history-based 3D CAD application, written entirely in Rust. Every modeling step becomes an entry in a timeline that you can scrub, edit, reorder, suppress and branch. It runs as a native desktop app (Windows, macOS, Linux) and in the browser from the same code.
+
+Bevel has its own geometry kernel: a boundary-representation kernel built on NURBS, with exact analytic curves and surfaces. No C or C++ code is compiled into it.
+
+**Status:** early development. Phase 0 (the skeleton) is done: the workspace, the application shell with its full layout and a 3D viewport that shows a test cube. The kernel, sketcher and modeling features come next; see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Building
+
+You need a Rust toolchain from [rustup](https://rustup.rs). The repository pins the exact version in `rust-toolchain.toml`, and rustup installs it, along with the `wasm32-unknown-unknown` target, the first time you build.
+
+```sh
+# Desktop app
+cargo run -p bevel-app --release
+
+# Headless command-line tool
+cargo run -p bevel-cli -- --help
+
+# Tests
+cargo test --workspace
+```
+
+On Linux, Bevel loads X11 or Wayland and the graphics drivers at run time, so no development packages are needed to build it.
+
+### In the browser
+
+The web build uses [Trunk](https://trunkrs.dev):
+
+```sh
+cargo install --locked trunk
+trunk serve --config web/Trunk.toml --open
+```
+
+Open <http://localhost:8080>. A browser with WebGPU or WebGL2 is required. `trunk build --release --config web/Trunk.toml` writes a static site to `dist/`.
+
+## Using the viewport
+
+| Action | Mouse |
+|---|---|
+| Orbit | Right drag, or Shift + middle drag |
+| Pan | Middle drag, or Shift + right drag |
+| Zoom (towards the cursor) | Scroll wheel or pinch |
+| Fit all | Home, or View > Fit All |
+
+View > Perspective / Orthographic switches the projection, and View > Log shows the application log.
+
+## Repository layout
+
+```
+crates/      the Bevel crates, one per layer of the architecture
+docs/        architecture, roadmap, design decisions, kernel notes, file format
+web/         index.html and Trunk configuration for the browser build
+xtask/       repository automation (cargo xtask)
+assets/      icons, standards tables and example scripts
+fixtures/    documents and models used by tests
+```
+
+Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/DECISIONS.md](docs/DECISIONS.md) for why.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for coding standards, the checks every change must pass, and the commit message format.
+
+## License
+
+Bevel is free software, licensed under the GNU General Public License, version 3 or (at your option) any later version. See [LICENSE](LICENSE).

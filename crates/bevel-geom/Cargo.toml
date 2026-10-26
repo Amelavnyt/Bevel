@@ -1,0 +1,15 @@
+[package]
+name = "bevel-geom"
+description = "Curves and surfaces (NURBS and analytic) and their intersections"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bevel-math.workspace = true

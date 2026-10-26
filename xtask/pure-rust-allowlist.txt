@@ -1,0 +1,20 @@
+# Exceptions to the pure-Rust guard (cargo xtask check-pure-rust).
+#
+# Each line is `<dependent crate> <banned crate>`, followed by a comment
+# saying why no C code is built or linked. Entries need maintainer approval
+# and are reviewed whenever the dependency is upgraded.
+
+# Linux only. The build script compiles a C logging shim only when the
+# `log` feature is enabled; nothing in the graph enables it.
+wayland-backend cc
+
+# Linux only. The build script probes system libraries with pkg-config only
+# when the `dlopen` feature is off; winit and wgpu enable `dlopen`, so the
+# Wayland libraries are loaded at run time and nothing is linked.
+wayland-sys pkg-config
+
+# Linux only (X11 support in winit). The build script asks the pkg-config
+# binary, if one is installed, for X11 library directories and records them
+# as string constants for run-time loading. It compiles no C and links
+# nothing but libdl.
+x11-dl pkg-config

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Checks the commit message format. Enable with:
+#   git config core.hooksPath .githooks
+exec cargo xtask check-commit-msg "$1"
