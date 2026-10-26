@@ -2,7 +2,7 @@
 
 //! Surface fitting: interpolation and least-squares approximation of a
 //! rectangular grid of points, and skinning of curves (The NURBS Book,
-//! sections 9.2.5, 9.4.3 and 10.3).
+//! sections 9.2.5 and 10.3, and chapter 9 for the approximation).
 //!
 //! The data is a grid `Q_{k,l}` with `k = 0, ..., n` along `u` (the rows)
 //! and `l = 0, ..., m` along `v` (the columns), stored row-major as a
@@ -41,7 +41,7 @@
 //! # Approximation
 //!
 //! [`approximate_surface`] applies the least-squares curve fit of
-//! section 9.4.1 in two passes, the approach of section 9.4.3: every column
+//! section 9.4.1 in two passes: every column
 //! of the grid is fitted along `u` with `count_u` control points, and every
 //! row of the resulting control points along `v` with `count_v` control
 //! points. As for curves, the knots follow the data parameters
@@ -81,6 +81,7 @@
 use bevel_math::{DVec3, DVec4, Point3};
 use nalgebra::DMatrix;
 
+use super::approximate::approximation_knots;
 use super::solve::{set, solve_least_squares, solve_square};
 use super::{COINCIDENT_TOLERANCE, FitPoint, Parametrization, averaging_knots};
 use crate::basis::basis_funs_raw;
@@ -243,36 +244,6 @@ fn collocation(params: &[f64], knots: &KnotVector, degree: usize) -> DMatrix<f64
         }
     }
     a
-}
-
-/// The knot vector of section 9.4.1 for `count` control points, which must
-/// be fewer than `params.len()`.
-///
-/// The same rule as the curve fit's, which keeps it private: the interior
-/// knots follow the density of the data parameters, computed in integer
-/// arithmetic.
-fn approximation_knots(
-    params: &[f64],
-    degree: usize,
-    count: usize,
-) -> Result<KnotVector, GeomError> {
-    let spans = count - degree;
-    let points = params.len();
-    let interior = (1..spans)
-        .map(|j| {
-            // jd = j (m + 1) / (n - p + 1), as quotient and remainder.
-            let scaled = j * points;
-            let (i, remainder) = (scaled / spans, scaled % spans);
-            let alpha = remainder as f64 / spans as f64;
-            match (i.checked_sub(1).and_then(|i| params.get(i)), params.get(i)) {
-                (Some(&a), Some(&b)) => Ok((1.0 - alpha) * a + alpha * b),
-                _ => Err(GeomError::InvalidArgument(
-                    "too few data points for the control point count",
-                )),
-            }
-        })
-        .collect::<Result<Vec<f64>, GeomError>>()?;
-    KnotVector::clamped_from_interior(degree, 0.0, 1.0, &interior)
 }
 
 /// Fits all columns of `data` (one data point per row, one independent
@@ -447,7 +418,7 @@ pub fn interpolate_surface(
 
 /// A non-rational surface with `count_u x count_v` control points that
 /// approximates the grid `Q_{k,l}` in the least-squares sense (The NURBS
-/// Book, section 9.4.3), interpolating its four corners.
+/// Book, chapter 9), interpolating its four corners.
 ///
 /// `grid` is as for [`interpolate_surface`]. The surface is defined on
 /// `[0, 1]^2`, with the parameters of [`surface_parameters`]. The curve
@@ -476,7 +447,10 @@ pub fn interpolate_surface(
 /// [`GeomError::NotConverged`] if a least-squares system is rank deficient
 /// to working precision.
 // The signature is the API's: one count and degree per direction.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a grid, its shape, and a degree and count per direction"
+)]
 pub fn approximate_surface(
     grid: &[Point3],
     rows: usize,

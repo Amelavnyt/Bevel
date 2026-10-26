@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Curve fitting: interpolation and least-squares approximation of points.
+//! Curve and surface fitting: interpolation and least-squares
+//! approximation of points, and lofting through curves.
 //!
-//! The functions here build a non-rational [`NurbsCurve`](crate::NurbsCurve)
-//! of a chosen degree from an ordered list of points. They are generic over
+//! Surface fitting (grids of points, and lofts) lives in the `surface`
+//! submodule and reuses the curve machinery described below one direction
+//! at a time. The curve functions build a non-rational
+//! [`NurbsCurve`](crate::NurbsCurve) of a chosen degree from an ordered list
+//! of points. They are generic over
 //! the point type: pass `&[DVec2]` to get a
 //! [`NurbsCurve2`](crate::NurbsCurve2) and `&[DVec3]` to get a
 //! [`NurbsCurve3`](crate::NurbsCurve3); [`FitPoint`] links the two. Everything

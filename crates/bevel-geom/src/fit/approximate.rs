@@ -178,8 +178,8 @@ fn max_deviation<P: FitPoint>(
 }
 
 /// The knot vector of section 9.4.1 for `count` control points, which
-/// must be fewer than `params.len()`.
-fn approximation_knots(
+/// must be fewer than `params.len()`. Shared with the surface fit.
+pub(super) fn approximation_knots(
     params: &[f64],
     degree: usize,
     count: usize,
