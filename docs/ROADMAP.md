@@ -63,6 +63,7 @@ Each phase ends with CI green and a demo that can be tried by hand. Items are ch
 - [ ] Sketch entities
 - [ ] Constraints and dimensions
 - [ ] The sketch timeline and its strip
+- [ ] Sketch-edit mode: the sketch tools and Finish Sketch replace the SOLID tools while a sketch is open
 - [ ] Profiles and regions
 - [ ] Tools with inference
 - [ ] Degrees-of-freedom colours
