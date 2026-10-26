@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "release/**"]
+  pull_request:
+  schedule:
+    # Weekly Windows and macOS builds.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: fmt, clippy, tests, guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo xtask check-pure-rust
+      - run: cargo xtask check-layers
+
+  wasm:
+    name: web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p bevel-app --target wasm32-unknown-unknown --locked -- -D warnings
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+      - run: trunk build --release --config web/Trunk.toml
+
+  deny:
+    name: licenses, bans, advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  commits:
+    name: commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo xtask check-commits "origin/${{ github.base_ref }}..HEAD"
+
+  platforms:
+    name: build and test (${{ matrix.os }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/release/')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked

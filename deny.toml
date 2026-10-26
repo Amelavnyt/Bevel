@@ -1,0 +1,67 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# The targets Bevel ships for; dependencies of other platforms are ignored.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "wasm32-unknown-unknown",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # zvariant, zvariant_derive and zbus_names are unmaintained: they were
+    # merged into zbus 6. They reach us through accesskit (screen reader
+    # support on Linux) and have no upgrade yet. Not vulnerabilities; drop
+    # these once accesskit moves to zbus 6.
+    { id = "RUSTSEC-2026-0370", reason = "unmaintained, via accesskit; no upgrade yet" },
+    { id = "RUSTSEC-2026-0371", reason = "unmaintained, via accesskit; no upgrade yet" },
+    { id = "RUSTSEC-2026-0372", reason = "unmaintained, via accesskit; no upgrade yet" },
+]
+
+[licenses]
+version = 2
+# Licenses compatible with distributing Bevel under GPL-3.0-or-later.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "GPL-3.0-or-later",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+# Fonts are data shipped alongside the program, not linked code; their
+# licenses permit redistribution with GPL software.
+[[licenses.exceptions]]
+crate = "epaint_default_fonts"
+allow = ["OFL-1.1", "Ubuntu-font-1.0"]
+
+[licenses.private]
+# Our own crates are not published.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# C build tooling is checked by `cargo xtask check-pure-rust`, which has
+# its own allow-list and understands per-target features.
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
