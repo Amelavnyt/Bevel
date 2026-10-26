@@ -18,20 +18,27 @@
 //! - [`basis`]: B-spline basis functions and their derivatives (A2.2, A2.3).
 //! - [`Homogeneous`]: weighted control points, so that every algorithm is
 //!   written once for 2D and 3D.
+//! - [`NurbsCurve`] ([`NurbsCurve2`], [`NurbsCurve3`]): construction,
+//!   evaluation, derivatives (A3.2, A4.1, A4.2), tangent, curvature,
+//!   transforms and control-point bounds.
 //!
-//! Next: NURBS curves (evaluation, knot and degree operations, arc length,
-//! point inversion), then analytic curves, NURBS and analytic surfaces, and
+//! Next: knot and degree operations, arc length and point inversion for
+//! curves, then analytic curves, NURBS and analytic surfaces, and
 //! intersections with booleans.
 
 pub mod basis;
 
+mod aabb2;
 mod error;
 mod homogeneous;
 mod knots;
+mod nurbs;
 
+pub use aabb2::Aabb2;
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
+pub use nurbs::{NurbsCurve, NurbsCurve2, NurbsCurve3};
 
 /// The highest supported degree for curves and surfaces.
 ///

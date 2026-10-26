@@ -2,8 +2,10 @@
 
 //! Random valid knot vectors and curves for the property tests.
 
+use bevel_geom::{Homogeneous, KnotVector, NurbsCurve, NurbsCurve2, NurbsCurve3};
+use bevel_math::{DVec2, DVec3};
 use proptest::prelude::*;
-use proptest::test_runner::{Config, RngSeed};
+use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
 /// A fixed-seed configuration so that runs are reproducible.
 pub fn config(cases: u32) -> Config {
@@ -59,4 +61,130 @@ pub fn params(a: f64, b: f64, count: usize) -> Vec<f64> {
     (0..count)
         .map(|i| a + (b - a) * i as f64 / (count - 1) as f64)
         .collect()
+}
+
+/// Control point coordinates.
+fn coord() -> impl Strategy<Value = f64> {
+    -100.0f64..100.0
+}
+
+/// Raw ingredients of a curve.
+#[derive(Clone, Debug)]
+struct CurveParts {
+    degree: usize,
+    knots: Vec<f64>,
+    coords: Vec<Vec<f64>>,
+    weights: Option<Vec<f64>>,
+}
+
+/// Degree, knots, coordinates and (when rational) weights for a random
+/// curve of dimension `dim`.
+fn curve_parts(dim: usize, rational: bool) -> impl Strategy<Value = CurveParts> {
+    degree_and_knots().prop_flat_map(move |(p, knots)| {
+        let count = knots.len() - p - 1;
+        (
+            Just(p),
+            Just(knots),
+            prop::collection::vec(prop::collection::vec(coord(), dim), count),
+            prop::collection::vec(0.2f64..5.0, count),
+        )
+            .prop_map(move |(degree, knots, coords, weights)| CurveParts {
+                degree,
+                knots,
+                coords,
+                weights: rational.then_some(weights),
+            })
+    })
+}
+
+/// A random 3D curve; rational when `rational` is set.
+pub fn curve3(rational: bool) -> impl Strategy<Value = NurbsCurve3> {
+    curve_parts(3, rational).prop_map(|c| {
+        let pts: Vec<DVec3> = c
+            .coords
+            .iter()
+            .map(|v| DVec3::new(v[0], v[1], v[2]))
+            .collect();
+        let kv = KnotVector::new(c.knots, c.degree).unwrap();
+        NurbsCurve3::from_points(c.degree, kv, &pts, c.weights.as_deref()).unwrap()
+    })
+}
+
+/// A random 2D curve; rational when `rational` is set.
+pub fn curve2(rational: bool) -> impl Strategy<Value = NurbsCurve2> {
+    curve_parts(2, rational).prop_map(|c| {
+        let pts: Vec<DVec2> = c.coords.iter().map(|v| DVec2::new(v[0], v[1])).collect();
+        let kv = KnotVector::new(c.knots, c.degree).unwrap();
+        NurbsCurve2::from_points(c.degree, kv, &pts, c.weights.as_deref()).unwrap()
+    })
+}
+
+/// A random 3D curve, rational or not.
+pub fn any_curve3() -> impl Strategy<Value = NurbsCurve3> {
+    prop_oneof![curve3(true), curve3(false)]
+}
+
+/// A random 2D curve, rational or not.
+pub fn any_curve2() -> impl Strategy<Value = NurbsCurve2> {
+    prop_oneof![curve2(true), curve2(false)]
+}
+
+/// The length scale of a curve: the largest control point distance from the
+/// origin, at least 1.
+pub fn size<H: Homogeneous>(c: &NurbsCurve<H>) -> f64 {
+    c.control_points()
+        .into_iter()
+        .map(H::point_length)
+        .fold(1.0, f64::max)
+}
+
+/// Distance between two model-space points.
+pub fn dist<H: Homogeneous>(a: H::Point, b: H::Point) -> f64 {
+    H::point_length(a - b)
+}
+
+/// At least `total` parameters spread over the knot spans of the domain (at
+/// least 8 per span), kept `margin` (relative to the span length) away from
+/// the span ends, as `(u, span_start, span_end)`.
+pub fn span_params<H: Homogeneous>(
+    c: &NurbsCurve<H>,
+    total: usize,
+    margin: f64,
+) -> Vec<(f64, f64, f64)> {
+    let (a, b) = c.domain();
+    let breaks: Vec<f64> = c
+        .knots()
+        .breakpoints()
+        .into_iter()
+        .filter(|&u| u >= a && u <= b)
+        .collect();
+    let spans = breaks.len() - 1;
+    let per_span = total.div_ceil(spans).max(8);
+    let mut out = Vec::new();
+    for w in breaks.windows(2) {
+        let (s0, s1) = (w[0], w[1]);
+        for j in 0..per_span {
+            let t = margin + (1.0 - 2.0 * margin) * j as f64 / (per_span - 1) as f64;
+            out.push((s0 + (s1 - s0) * t, s0, s1));
+        }
+    }
+    out
+}
+
+/// Asserts that `b` at `map(u)` matches `a` at `u` for `count` parameters
+/// across `a`'s domain, to within 1e-9 of the size of `a`.
+#[allow(dead_code)]
+pub fn assert_same_geometry<H: Homogeneous>(
+    a: &NurbsCurve<H>,
+    b: &NurbsCurve<H>,
+    map: impl Fn(f64) -> f64,
+    count: usize,
+) -> Result<(), TestCaseError> {
+    let (s, e) = a.domain();
+    let tol = 1e-9 * size(a);
+    for u in params(s, e, count) {
+        let d = dist::<H>(a.point(u), b.point(map(u)));
+        prop_assert!(d <= tol, "curves differ by {d} at u = {u} (tol {tol})");
+    }
+    Ok(())
 }
