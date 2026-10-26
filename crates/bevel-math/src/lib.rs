@@ -13,9 +13,15 @@
 pub mod tol;
 
 mod aabb;
+mod error;
+mod frame;
+mod interval;
 
-pub use aabb::Aabb3;
+pub use aabb::{Aabb2, Aabb3};
+pub use error::MathError;
+pub use frame::Frame3;
 pub use glam::{DMat3, DMat4, DQuat, DVec2, DVec3, DVec4};
+pub use interval::Interval;
 
 /// View and projection matrix constructors (glam's camera module).
 pub use glam::dcamera;

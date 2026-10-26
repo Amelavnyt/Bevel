@@ -13,3 +13,8 @@ workspace = true
 
 [dependencies]
 glam.workspace = true
+robust.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
