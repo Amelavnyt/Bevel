@@ -34,7 +34,9 @@
 //!   arcs through a point (A7.2, A7.3) as rational quadratics.
 //! - [`NurbsSurface`]: construction, evaluation and partial derivatives
 //!   (A3.5, A3.6, A4.3, A4.4), normals, principal curvatures ([`Curvatures`])
-//!   and control-point bounds.
+//!   and control-point bounds; knot insertion (A5.3), refinement (A5.5) and
+//!   degree elevation (A5.9 on every column) in either direction, and
+//!   swapping `u` and `v`.
 //!
 //! The Gauss-Legendre rules and the Newton iteration are local and private
 //! for now; they move to the numerics in `bevel-math` once it has them.

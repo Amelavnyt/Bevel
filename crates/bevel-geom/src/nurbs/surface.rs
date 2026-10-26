@@ -45,6 +45,8 @@
 //! splitting, reversal, isocurves and transforms live in the submodules;
 //! each one documents the algorithm it uses.
 
+mod knot_ops;
+
 use bevel_math::{Aabb3, DVec3, DVec4, Point3, Vector3};
 
 use crate::basis::{basis_funs_raw, ders_basis_funs_raw};
