@@ -36,8 +36,12 @@
 //!   the normal) relative to the first, `I = (E, F, G)` (dot products of
 //!   the first partials), as in classical differential geometry: the principal
 //!   curvatures are the roots of `(EG - F^2) k^2 - (EN - 2FM + GL) k +
-//!   (LN - M^2) = 0`, and the principal directions are the null vectors of
-//!   `II - k I`, mapped to model space through `S_u` and `S_v`.
+//!   (LN - M^2) = 0`. Rather than solving that quadratic, whose roots lose
+//!   half their digits near an umbilic point, `II` is expressed in the
+//!   orthonormal tangent basis `e1 = S_u / |S_u|`, `e2 = n x e1` as a
+//!   symmetric 2x2 matrix `[[a, b], [b, c]]`; its eigenvalues
+//!   `(a + c) / 2 +- hypot((a - c) / 2, b)` and the eigenvector at angle
+//!   `atan2(2 b, a - c) / 2` from `e1` follow without cancellation.
 //!
 //! # Representation changes
 //!
@@ -64,10 +68,6 @@ const RATIONAL_WEIGHT_TOLERANCE: f64 = 1e-14;
 /// Relative tolerance on `|S_u x S_v| / (|S_u| |S_v|)` (the sine of the
 /// angle between the partials) below which the surface has no normal.
 const NORMAL_SINE_TOLERANCE: f64 = 1e-12;
-
-/// Relative tolerance on the difference of the principal curvatures below
-/// which a point counts as umbilic (every direction is principal).
-const UMBILIC_TOLERANCE: f64 = 1e-10;
 
 /// A non-uniform rational B-spline surface in 3D model space.
 ///
@@ -503,7 +503,8 @@ impl NurbsSurface {
     ///
     /// At an umbilic point (equal curvatures, as everywhere on a sphere or a
     /// plane) every tangent direction is principal; `dir1` is then the
-    /// direction of `S_u`.
+    /// direction of `S_u` when the curvatures agree exactly, and otherwise
+    /// decided by rounding.
     pub fn principal_curvatures(&self, u: f64, v: f64) -> Option<Curvatures> {
         let (u, v) = self.clamp_params(u, v);
         let (su, sv) = self.spans(u, v);
@@ -516,45 +517,28 @@ impl NurbsSurface {
         if det.is_nan() || det <= 0.0 {
             return None;
         }
-        let mean = (e * nn - 2.0 * f * m + g * l) / (2.0 * det);
-        let gauss = (l * nn - m * m) / det;
-        let disc = (mean * mean - gauss).max(0.0).sqrt();
-        let (k1, k2) = (mean + disc, mean - disc);
-        let scale = k1.abs().max(k2.abs());
-        let dir1 = if disc <= UMBILIC_TOLERANCE * scale {
-            Some(s_u / s_u.length())
-        } else {
-            principal_direction(k1, (e, f, g), (l, m, nn), s_u, s_v)
-        }?;
-        // Remove any normal component left by rounding.
-        let dir1 = (dir1 - n * dir1.dot(n)).try_normalize()?;
+        // The orthonormal tangent basis e1 = S_u / |S_u|, e2 = n x e1, with
+        // e2 = alpha S_u + beta S_v from the first fundamental form.
+        let e1 = s_u / e.sqrt();
+        let e2 = n.cross(e1);
+        let (x, y) = (e2.dot(s_u), e2.dot(s_v));
+        let alpha = (x * g - y * f) / det;
+        let beta = (y * e - x * f) / det;
+        // II in that basis is the symmetric matrix [[a, b], [b, c]].
+        let a = l / e;
+        let b = (l * alpha + m * beta) / e.sqrt();
+        let c = l * alpha * alpha + 2.0 * m * alpha * beta + nn * beta * beta;
+        let mean = 0.5 * (a + c);
+        let radius = (0.5 * (a - c)).hypot(b);
+        let theta = 0.5 * (2.0 * b).atan2(a - c);
+        let dir1 = e1 * theta.cos() + e2 * theta.sin();
         Some(Curvatures {
-            k1,
-            k2,
+            k1: mean + radius,
+            k2: mean - radius,
             dir1,
             dir2: n.cross(dir1),
         })
     }
-}
-
-/// The model-space direction of the null vector of `II - k I` for the
-/// principal curvature `k`: of the two rows `(L - kE, M - kF)` and
-/// `(M - kF, N - kG)`, the longer one gives the more accurate null vector.
-fn principal_direction(
-    k: f64,
-    (e, f, g): (f64, f64, f64),
-    (l, m, n): (f64, f64, f64),
-    s_u: Vector3,
-    s_v: Vector3,
-) -> Option<Vector3> {
-    let (a, b, c) = (l - k * e, m - k * f, n - k * g);
-    // (du, dv) orthogonal to the longer row.
-    let (du, dv) = if a * a + b * b >= b * b + c * c {
-        (-b, a)
-    } else {
-        (-c, b)
-    };
-    (s_u * du + s_v * dv).try_normalize()
 }
 
 #[cfg(test)]
@@ -612,6 +596,19 @@ mod tests {
         let n = s.normal(x, y).unwrap();
         assert!(c.dir1.dot(n).abs() < 1e-14 && c.dir2.dot(n).abs() < 1e-14);
         assert!((c.dir1.cross(c.dir2) - n).length() < 1e-14);
+    }
+
+    /// Found by the swept-surface tests: near an umbilic point the roots of
+    /// the curvature quadratic `k^2 - 2 H k + K` lost half their digits (an
+    /// error of 5e-9 on a sphere of radius 2).
+    #[test]
+    fn curvatures_stay_accurate_near_an_umbilic_point() {
+        let s = paraboloid();
+        let (x, y) = (1e-5, 2e-5);
+        let q = 1.0 + 4.0 * (x * x + y * y);
+        let c = s.principal_curvatures(x, y).unwrap();
+        assert!((c.k1 - 2.0 / q.sqrt()).abs() < 1e-13, "{c:?}");
+        assert!((c.k2 - 2.0 / q.powf(1.5)).abs() < 1e-13, "{c:?}");
     }
 
     #[test]
