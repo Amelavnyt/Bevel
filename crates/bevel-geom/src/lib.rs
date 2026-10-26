@@ -47,6 +47,11 @@
 //!   bilinear patches.
 //! - [`make_compatible`]: curves brought to a common degree, domain and
 //!   knot vector, as ruled surfaces and lofts need.
+//! - [`analytic`]: lines, circles and ellipses in the plane and in space
+//!   ([`Line2`], [`Line3`], [`Circle2`], [`Circle3`], [`Ellipse2`],
+//!   [`Ellipse3`]) with closed-form points, derivatives, tangents,
+//!   curvature, closest points (Eberly's bisection for ellipses) and exact
+//!   bounding boxes of arcs; parameter domains as [`Domain`]s.
 //!
 //! The curve arc length still uses a local copy of the Gauss-Legendre
 //! rules; the closest-point iterations keep their own Newton loops, since
@@ -56,6 +61,7 @@
 //! Next: analytic curves and surfaces with the `CurveGeom` and
 //! `SurfaceGeom` traits, then intersections for booleans.
 
+pub mod analytic;
 pub mod basis;
 pub mod conics;
 pub mod fit;
@@ -66,6 +72,7 @@ mod homogeneous;
 mod knots;
 mod nurbs;
 
+pub use analytic::{Circle2, Circle3, Domain, Ellipse2, Ellipse3, Line2, Line3};
 pub use conics::{circle_arc, circle_arc_2d, conic_arc, ellipse_arc, ellipse_arc_2d};
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;
