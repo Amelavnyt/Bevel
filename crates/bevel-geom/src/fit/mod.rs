@@ -13,7 +13,7 @@
 //!
 //! A fit first assigns a parameter `u_k` in `[0, 1]` to every data point
 //! `Q_k` ([`parameters`], section 9.2.1): uniform spacing, chord length
-//! (eq. 9.4) or the centripetal method (eq. 9.5). The knot vector is then
+//! or the centripetal method (section 9.2.1). The knot vector is then
 //! derived from the parameters. For interpolation, [`averaging_knots`]
 //! averages `p` consecutive parameters (eq. 9.8), which guarantees that the
 //! collocation matrix is non-singular (the Schoenberg-Whitney conditions)
@@ -40,8 +40,8 @@
 //! [`approximate`] (section 9.4.1) fits fewer control points than data
 //! points: the first and last point are interpolated and the interior
 //! control points minimise the sum of squared distances `|Q_k - C(u_k)|^2`
-//! of the other points (eq. 9.63 and following). The knots are spread to
-//! follow the data parameters (eqs. 9.68 and 9.69), so every knot span holds
+//! of the other points (section 9.4.1). The knots are spread to
+//! follow the data parameters (section 9.4.1), so every knot span holds
 //! at least one parameter. The over-determined system is solved through a
 //! Householder QR factorisation of the design matrix instead of the normal
 //! equations `N^T N P = R`: the normal equations square the condition number,
@@ -161,11 +161,11 @@ pub enum Parametrization {
     /// Equally spaced parameters, `u_k = k / n` (`w_k = 1`). Ignores the
     /// geometry, so it suits data that is itself sampled evenly.
     Uniform,
-    /// Parameters proportional to the accumulated chord length (eq. 9.4,
+    /// Parameters proportional to the accumulated chord length (section 9.2.1,
     /// `w_k = d_k`): the usual choice and a good default.
     ChordLength,
     /// Parameters proportional to the accumulated square root of the chord
-    /// length (eq. 9.5, `w_k = sqrt(d_k)`): the centripetal method, which
+    /// length (section 9.2.1, `w_k = sqrt(d_k)`): the centripetal method, which
     /// avoids overshoot and loops at sharp turns in unevenly spaced data.
     Centripetal,
 }
@@ -185,7 +185,7 @@ fn check_points<P: FitPoint>(points: &[P], min: usize) -> Result<(), GeomError> 
 
 /// Parameters in `[0, 1]` for the points, with the first at 0, the last at 1
 /// and the rest strictly increasing in between (The NURBS Book, section
-/// 9.2.1, eqs. 9.4 and 9.5).
+/// 9.2.1).
 ///
 /// # Errors
 ///

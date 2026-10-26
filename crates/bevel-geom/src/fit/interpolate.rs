@@ -4,7 +4,7 @@
 //!
 //! Given points `Q_0, ..., Q_n`, parameters `u*_0 < ... < u*_n` and a clamped
 //! knot vector, the control points `P_j` of the interpolating curve solve
-//! `sum_j N_{j,p}(u*_k) P_j = Q_k` for `k = 0, ..., n` (eq. 9.1). With the
+//! `sum_j N_{j,p}(u*_k) P_j = Q_k` for `k = 0, ..., n` (section 9.2.1). With the
 //! averaged knots of eq. 9.8 the matrix `[N_{j,p}(u*_k)]` is non-singular and
 //! well conditioned (A9.1).
 //!
@@ -14,8 +14,8 @@
 //! the curve at its two ends (section 9.2.2). The curve then has `n + 3`
 //! control points, two more than points, and the system gains the equations
 //! `C'(0) = D_0` and `C'(1) = D_n`. For a clamped curve the first is
-//! `p (P_1 - P_0) / u_{p+1} = D_0` (eq. 9.11) and the last
-//! `p (P_{n+2} - P_{n+1}) / (1 - u_{m-p-1}) = D_n` (eq. 9.12); this code
+//! `p (P_1 - P_0) / u_{p+1} = D_0` and the last
+//! `p (P_{n+2} - P_{n+1}) / (1 - u_{m-p-1}) = D_n` (section 9.2.2); this code
 //! forms both rows from the basis function derivatives (A2.3) instead. The
 //! knots are those of the derivative-constrained variant of eq. 9.8,
 //! `u_{j+p+1} = (u*_j + ... + u*_{j+p-1}) / p` for `j = 0, ..., n - p + 1`,

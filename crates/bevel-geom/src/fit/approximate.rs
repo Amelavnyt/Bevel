@@ -5,16 +5,16 @@
 //! Given points `Q_0, ..., Q_m` and a number `n + 1 <= m + 1` of control
 //! points, the curve `C(u) = sum_j N_{j,p}(u) P_j` has `P_0 = Q_0` and
 //! `P_n = Q_m` fixed and the other control points chosen to minimise
-//! `sum_{k=1}^{m-1} |Q_k - C(u*_k)|^2` (eq. 9.63). Setting the gradient to
-//! zero gives the normal equations `(N^T N) P = R` (eq. 9.66), where `N` is
+//! `sum_{k=1}^{m-1} |Q_k - C(u*_k)|^2` (section 9.4.1). Setting the gradient to
+//! zero gives the normal equations `(N^T N) P = R`, where `N` is
 //! the `(m - 1) x (n - 1)` matrix of `N_{j,p}(u*_k)` for the free control
 //! points `j = 1, ..., n - 1` and
-//! `R_k = Q_k - N_{0,p}(u*_k) Q_0 - N_{n,p}(u*_k) Q_m` (eq. 9.63).
+//! `R_k = Q_k - N_{0,p}(u*_k) Q_0 - N_{n,p}(u*_k) Q_m`.
 //!
 //! # Knots
 //!
 //! The interior knots follow the density of the data parameters
-//! (eqs. 9.68 and 9.69): with `d = (m + 1) / (n - p + 1)`, `i = floor(j d)`
+//! (section 9.4.1): with `d = (m + 1) / (n - p + 1)`, `i = floor(j d)`
 //! and `alpha = j d - i`, the knot is
 //! `u_{p+j} = (1 - alpha) u*_{i-1} + alpha u*_i` for `j = 1, ..., n - p`.
 //! This puts at least one parameter in every knot span, which keeps the
@@ -177,7 +177,7 @@ fn max_deviation<P: FitPoint>(
         .fold(0.0, f64::max)
 }
 
-/// The knot vector of eqs. 9.68 and 9.69 for `count` control points, which
+/// The knot vector of section 9.4.1 for `count` control points, which
 /// must be fewer than `params.len()`.
 fn approximation_knots(
     params: &[f64],
