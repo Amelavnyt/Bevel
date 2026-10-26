@@ -2,7 +2,7 @@
 
 //! Random valid knot vectors and curves for the property tests.
 
-use bevel_geom::{Homogeneous, KnotVector, NurbsCurve, NurbsCurve2, NurbsCurve3};
+use bevel_geom::{Homogeneous, KnotVector, NurbsCurve, NurbsCurve2, NurbsCurve3, NurbsSurface};
 use bevel_math::{DVec2, DVec3};
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
@@ -237,6 +237,100 @@ pub fn assert_same_geometry<H: Homogeneous>(
     for u in params(s, e, count) {
         let d = dist::<H>(a.point(u), b.point(map(u)));
         prop_assert!(d <= tol, "curves differ by {d} at u = {u} (tol {tol})");
+    }
+    Ok(())
+}
+
+/// A degree in `1..=4` with a clamped knot vector for `degree + 1 + extra`
+/// control points, `extra` in `2..=6`: one direction of a random surface.
+fn surface_direction() -> impl Strategy<Value = (usize, Vec<f64>)> {
+    (1usize..=4, 2usize..=6)
+        .prop_flat_map(|(p, extra)| clamped_knots(p, extra).prop_map(move |k| (p, k)))
+}
+
+/// A random surface; rational when `rational` is set.
+pub fn surface(rational: bool) -> impl Strategy<Value = NurbsSurface> {
+    (surface_direction(), surface_direction())
+        .prop_flat_map(|((p, ku), (q, kv))| {
+            let count = (ku.len() - p - 1) * (kv.len() - q - 1);
+            (
+                Just((p, ku, q, kv)),
+                prop::collection::vec(prop::array::uniform3(coord()), count),
+                prop::collection::vec(0.2f64..5.0, count),
+            )
+        })
+        .prop_map(move |((p, ku, q, kv), coords, weights)| {
+            let pts: Vec<DVec3> = coords.into_iter().map(DVec3::from_array).collect();
+            let ku = KnotVector::new(ku, p).unwrap();
+            let kv = KnotVector::new(kv, q).unwrap();
+            let w = rational.then_some(weights);
+            NurbsSurface::from_points(p, q, ku, kv, &pts, w.as_deref()).unwrap()
+        })
+}
+
+/// A random surface, rational or not.
+pub fn any_surface() -> impl Strategy<Value = NurbsSurface> {
+    prop_oneof![surface(true), surface(false)]
+}
+
+/// The length scale of a surface: the largest control point distance from
+/// the origin, at least 1.
+pub fn surface_size(s: &NurbsSurface) -> f64 {
+    s.control_points()
+        .into_iter()
+        .map(DVec3::length)
+        .fold(1.0, f64::max)
+}
+
+/// A `count x count` grid of parameters over the domain, ends included.
+pub fn grid(s: &NurbsSurface, count: usize) -> Vec<(f64, f64)> {
+    let ((ua, ub), (va, vb)) = s.domain();
+    let vs = params(va, vb, count);
+    params(ua, ub, count)
+        .into_iter()
+        .flat_map(|u| vs.iter().map(move |&v| (u, v)))
+        .collect()
+}
+
+/// At least `total` parameters over the knot spans of the domain `(a, b)`
+/// (at least 2 per span), kept `margin` (relative to the span length) away
+/// from the span ends, as `(t, span_start, span_end)`.
+pub fn knot_span_params(
+    knots: &KnotVector,
+    (a, b): (f64, f64),
+    total: usize,
+    margin: f64,
+) -> Vec<(f64, f64, f64)> {
+    let breaks: Vec<f64> = knots
+        .breakpoints()
+        .into_iter()
+        .filter(|&u| u >= a && u <= b)
+        .collect();
+    let spans = breaks.len() - 1;
+    let per_span = total.div_ceil(spans).max(2);
+    let mut out = Vec::new();
+    for w in breaks.windows(2) {
+        let (s0, s1) = (w[0], w[1]);
+        for j in 0..per_span {
+            let t = margin + (1.0 - 2.0 * margin) * j as f64 / (per_span - 1) as f64;
+            out.push((s0 + (s1 - s0) * t, s0, s1));
+        }
+    }
+    out
+}
+
+/// Asserts that `b` at `map(u, v)` matches `a` at `(u, v)` on a 12 x 12
+/// grid over `a`'s domain, to within 1e-9 of the size of `a`.
+pub fn assert_same_surface(
+    a: &NurbsSurface,
+    b: &NurbsSurface,
+    map: impl Fn(f64, f64) -> (f64, f64),
+) -> Result<(), TestCaseError> {
+    let tol = 1e-9 * surface_size(a);
+    for (u, v) in grid(a, 12) {
+        let (s, t) = map(u, v);
+        let d = (a.point(u, v) - b.point(s, t)).length();
+        prop_assert!(d <= tol, "surfaces differ by {d} at ({u}, {v}) (tol {tol})");
     }
     Ok(())
 }

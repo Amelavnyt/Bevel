@@ -32,6 +32,9 @@
 //!   (section 9.4.1).
 //! - [`conics`]: exact circular and elliptical arcs (A7.1) and open conic
 //!   arcs through a point (A7.2, A7.3) as rational quadratics.
+//! - [`NurbsSurface`]: construction, evaluation and partial derivatives
+//!   (A3.5, A3.6, A4.3, A4.4), normals, principal curvatures ([`Curvatures`])
+//!   and control-point bounds.
 //!
 //! The Gauss-Legendre rules and the Newton iteration are local and private
 //! for now; they move to the numerics in `bevel-math` once it has them.
@@ -54,7 +57,7 @@ pub use conics::{circle_arc, circle_arc_2d, conic_arc, ellipse_arc, ellipse_arc_
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
-pub use nurbs::{ClosestPoint, NurbsCurve, NurbsCurve2, NurbsCurve3};
+pub use nurbs::{ClosestPoint, Curvatures, NurbsCurve, NurbsCurve2, NurbsCurve3, NurbsSurface};
 
 /// The highest supported degree for curves and surfaces.
 ///
@@ -63,7 +66,8 @@ pub use nurbs::{ClosestPoint, NurbsCurve, NurbsCurve2, NurbsCurve3};
 /// exchange kernels.
 pub const MAX_DEGREE: usize = 25;
 
-/// The highest derivative order [`NurbsCurve::derivatives`] computes.
+/// The highest derivative order [`NurbsCurve::derivatives`] and
+/// [`NurbsSurface::derivatives`] compute.
 ///
 /// Geometry needs at most third derivatives; the cap keeps a careless
 /// caller from requesting an enormous allocation.
