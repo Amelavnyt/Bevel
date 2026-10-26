@@ -27,6 +27,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design these decisions produce.
 | 0011 | Conventional Commits with a footer allow-list | Accepted |
 | 0012 | Viewport renders to an offscreen texture shown by egui | Accepted |
 | 0013 | Z-up world and reverse-Z depth | Accepted |
+| 0014 | Exceptions to the dependency rules for the application shell | Accepted |
 
 ## ADR-0001: 100% Rust, no C/C++ in the build
 
@@ -157,3 +158,21 @@ Status: Accepted (2026-10-26)
 **Decision.** World space is Z-up and right-handed, in millimetres, with the grid in the XY plane. Depth is reverse-Z (1 at the near plane, 0 at infinity) with an infinite far plane, which gives even depth precision across the modeling space. Edges are pulled towards the camera in the line shader instead of using depth bias, which WebGPU forbids for line topologies.
 
 **Consequences.** Depth precision is good at any distance and no far-plane tuning is needed in perspective views. All depth comparisons and clears in the renderer use the reversed convention, and any new pass must follow it. The edge offset is part of the shader and has to be tuned in clip or view space rather than through pipeline state.
+
+## ADR-0014: Exceptions to the dependency rules for the application shell
+
+Status: Accepted (2026-10-26)
+
+**Context.** The application shell (eframe, winit, wgpu) brings in a few dependencies that the rules in [ADR-0001](#adr-0001-100-rust-no-cc-in-the-build) and the cargo-deny policy flag. Each was checked to see whether it could be removed.
+
+**Decision.** Three edges stay on the pure-Rust guard's allow-list (`xtask/pure-rust-allowlist.txt`). All are Linux-only, and none builds or links C code:
+
+- `wayland-backend` lists `cc`, but its build script uses it only with the `log` feature, which nothing enables.
+- `wayland-sys` lists `pkg-config`, but with the `dlopen` feature (enabled by winit and wgpu) it loads the Wayland libraries at run time and its build script returns before probing.
+- `x11-dl` runs the `pkg-config` program, if installed, only to record X11 library directories as strings for run-time loading. It compiles nothing and links only libdl.
+
+Removing them would mean dropping Wayland or X11 support. cargo-deny ignores RUSTSEC-2026-0370, -0371 and -0372, which mark `zvariant`, `zvariant_derive` and `zbus_names` as unmaintained (merged into zbus 6). They are not vulnerabilities, and they come from accesskit's Linux screen-reader adapter, whose latest release still uses zbus 5. Removing them would mean dropping screen-reader support.
+
+Two dependencies outside the starting set are accepted: `tracing-subscriber`, the standard companion to `tracing`, which routes events to stderr and the in-app log panel; and `wasm-bindgen-futures`, which starts the async web runner and is already in the graph through wgpu. The web platform layer uses eframe's re-export of `web-sys` rather than depending on it directly.
+
+**Consequences.** The guard and cargo-deny stay strict for everything else. Each exception is reviewed when the dependency that brings it in is upgraded: the advisory ignores go once accesskit moves to zbus 6, and the guard warns when an allow-list entry is no longer needed. Content hashing for the object store will need the same review: `blake3` keeps `cc` as a build dependency even with its `pure` feature, which disables the C and assembly code.
