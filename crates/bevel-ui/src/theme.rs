@@ -20,12 +20,12 @@ pub const TEXT_WEAK: Color32 = Color32::from_rgb(0x8f, 0x97, 0xa1);
 pub const ACCENT: Color32 = Color32::from_rgb(0x2d, 0x89, 0x85);
 /// A lighter teal for text and lines that must read on dark backgrounds.
 pub const ACCENT_LIGHT: Color32 = Color32::from_rgb(0x58, 0xaa, 0xa5);
-/// The light green accent: highlights, matching the green in the icons.
+/// The light green secondary accent, used sparingly: hints and small highlights.
 pub const HIGHLIGHT: Color32 = Color32::from_rgb(0x77, 0xc8, 0x9d);
-/// Hovered widget background.
-pub const HOVER: Color32 = Color32::from_rgb(0x3a, 0x3f, 0x47);
-/// Pressed or selected widget background (dark signature teal).
-pub const ACTIVE: Color32 = Color32::from_rgb(0x1f, 0x5c, 0x59);
+/// Hovered widget background: a dark grey tinted with the signature teal.
+pub const HOVER: Color32 = Color32::from_rgb(0x2e, 0x47, 0x47);
+/// Pressed or selected widget background: the signature teal itself.
+pub const ACTIVE: Color32 = ACCENT;
 /// Translucent background of controls floating over the viewport.
 pub const OVERLAY: Color32 = Color32::from_rgba_premultiplied(0x22, 0x25, 0x2a, 0xe6);
 
@@ -80,8 +80,8 @@ pub fn apply(ctx: &egui::Context) {
         v.code_bg_color = RECESSED;
         v.hyperlink_color = ACCENT_LIGHT;
         v.warn_fg_color = Color32::from_rgb(0xe8, 0xb0, 0x4a);
-        v.selection.bg_fill = ACTIVE;
-        v.selection.stroke = Stroke::new(1.0, ACCENT);
+        v.selection.bg_fill = ACCENT;
+        v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
 
         let corner = CornerRadius::same(5);
         let w = &mut v.widgets;
@@ -99,14 +99,14 @@ pub fn apply(ctx: &egui::Context) {
 
         w.hovered.bg_fill = HOVER;
         w.hovered.weak_bg_fill = HOVER;
-        w.hovered.bg_stroke = Stroke::new(1.0, Color32::from_rgb(0x4d, 0x54, 0x5e));
+        w.hovered.bg_stroke = Stroke::new(1.0, Color32::from_rgb(0x3f, 0x6e, 0x6c));
         w.hovered.fg_stroke = Stroke::new(1.5, Color32::WHITE);
         w.hovered.corner_radius = corner;
         w.hovered.expansion = 0.0;
 
         w.active.bg_fill = ACTIVE;
         w.active.weak_bg_fill = ACTIVE;
-        w.active.bg_stroke = Stroke::new(1.0, ACCENT);
+        w.active.bg_stroke = Stroke::new(1.0, ACCENT_LIGHT);
         w.active.fg_stroke = Stroke::new(1.5, Color32::WHITE);
         w.active.corner_radius = corner;
         w.active.expansion = 0.0;

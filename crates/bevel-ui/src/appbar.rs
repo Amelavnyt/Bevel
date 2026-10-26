@@ -13,7 +13,12 @@ pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiA
     let bar_rect = ui.max_rect();
     ui.horizontal_centered(|ui| {
         ui.add(Icon::Logo.image(20.0));
-        ui.label(egui::RichText::new("Bevel").strong().size(14.5));
+        ui.label(
+            egui::RichText::new("Bevel")
+                .strong()
+                .size(14.5)
+                .color(theme::ACCENT_LIGHT),
+        );
         ui.add_space(6.0);
         ui.scope(|ui| menus(ui, state, actions));
         widgets::vertical_separator(ui);

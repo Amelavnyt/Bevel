@@ -33,7 +33,7 @@ fn test_cube() -> TriangleMesh {
         ([0.0, 0.0, -1.0], [0, 2, 3, 1]),
     ];
     let mut mesh = TriangleMesh {
-        color: [0.42, 0.53, 0.53, 1.0],
+        color: [0.48, 0.52, 0.54, 1.0],
         ..TriangleMesh::default()
     };
     for (normal, corners) in faces {
