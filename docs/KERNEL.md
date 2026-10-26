@@ -74,6 +74,7 @@ Add a row for each kernel bug, newest last. The regression test column names the
 | 2026-10-26 | Closest point missed the near side of a quintic hairpin | Sampling stepped over the narrow turn | Branch-and-bound pass over Bézier segments with a sound lower bound | `closest_point_finds_the_far_side_of_a_hairpin` |
 | 2026-10-26 | Arc length off by 5e-6 with a 1e-6 tolerance | 8- and 16-point Gauss rules agreed by accident on a steep speed profile | Also require the 16-point result to match the sum of its halves | `arc_length_is_not_fooled_by_agreeing_rules` |
 | 2026-10-26 | Basis functions slightly negative one ulp past the domain end | Public basis functions did not clamp the parameter | Clamp to the domain | `basis_is_a_non_negative_partition_of_unity` |
+| 2026-10-27 | Principal curvatures off by 5e-9 on a sphere of radius 2 | Solving k² − 2Hk + K loses half the digits near umbilic points | Closed-form eigen-decomposition of the second fundamental form in an orthonormal tangent basis | `curvatures_stay_accurate_near_an_umbilic_point` |
 
 ## Algorithm notes
 
