@@ -36,6 +36,7 @@
 //! intersections with booleans.
 
 pub mod basis;
+pub mod fit;
 
 mod error;
 mod gauss_legendre;
