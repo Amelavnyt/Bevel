@@ -14,6 +14,53 @@ pub enum Projection {
     Orthographic,
 }
 
+/// A named viewing direction, as offered by the view cube.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StandardView {
+    /// Looking down onto the XY plane, X to the right and Y up the screen.
+    Top,
+    /// Looking up at the XY plane from below.
+    Bottom,
+    /// Looking along +Y, X to the right and Z up.
+    Front,
+    /// Looking along -Y.
+    Back,
+    /// Looking along +X, from the -X side.
+    Left,
+    /// Looking along -X, Y to the right and Z up.
+    Right,
+    /// Isometric view from the front, right and top.
+    Home,
+}
+
+impl StandardView {
+    /// Every standard view.
+    pub const ALL: [Self; 7] = [
+        Self::Top,
+        Self::Bottom,
+        Self::Front,
+        Self::Back,
+        Self::Left,
+        Self::Right,
+        Self::Home,
+    ];
+
+    /// Camera `(yaw, pitch)` for this view; see [`Camera`].
+    pub fn yaw_pitch(self) -> (f64, f64) {
+        use std::f64::consts::PI;
+        match self {
+            Self::Top => (-FRAC_PI_2, MAX_PITCH),
+            Self::Bottom => (-FRAC_PI_2, -MAX_PITCH),
+            Self::Front => (-FRAC_PI_2, 0.0),
+            Self::Back => (FRAC_PI_2, 0.0),
+            Self::Left => (PI, 0.0),
+            Self::Right => (0.0, 0.0),
+            // The direction (1, -1, 1): equal angles to all three axes.
+            Self::Home => (-FRAC_PI_4, (1.0 / 3f64.sqrt()).asin()),
+        }
+    }
+}
+
 /// A turntable camera orbiting a target point in a Z-up world.
 ///
 /// The eye sits at `target + distance * dir(yaw, pitch)`, where `yaw` is
@@ -45,11 +92,12 @@ const ORBIT_RADIANS_PER_PIXEL: f64 = 0.008;
 
 impl Default for Camera {
     fn default() -> Self {
+        let (yaw, pitch) = StandardView::Home.yaw_pitch();
         Self {
             target: Point3::ZERO,
             distance: 150.0,
-            yaw: -FRAC_PI_4,
-            pitch: 0.6,
+            yaw,
+            pitch,
             fov_y: 40f64.to_radians(),
             projection: Projection::Perspective,
         }
@@ -57,6 +105,33 @@ impl Default for Camera {
 }
 
 impl Camera {
+    /// Points the camera along a standard view, keeping target and distance.
+    pub fn set_view(&mut self, view: StandardView) {
+        (self.yaw, self.pitch) = view.yaw_pitch();
+    }
+
+    /// The camera a fraction `t` (0 to 1) of the way from `from` to `to`, for
+    /// animated transitions. Yaw turns the short way round, distance changes
+    /// geometrically so zooming feels even, and the projection switches at
+    /// the end.
+    pub fn interpolate(from: &Self, to: &Self, t: f64) -> Self {
+        use std::f64::consts::{PI, TAU};
+        let t = t.clamp(0.0, 1.0);
+        let yaw_delta = (to.yaw - from.yaw + PI).rem_euclid(TAU) - PI;
+        Self {
+            target: from.target.lerp(to.target, t),
+            distance: from.distance * (to.distance / from.distance).powf(t),
+            yaw: from.yaw + t * yaw_delta,
+            pitch: from.pitch + t * (to.pitch - from.pitch),
+            fov_y: from.fov_y + t * (to.fov_y - from.fov_y),
+            projection: if t < 1.0 {
+                from.projection
+            } else {
+                to.projection
+            },
+        }
+    }
+
     /// Unit vector from the target towards the eye.
     pub fn back(&self) -> Vector3 {
         let (sy, cy) = self.yaw.sin_cos();
@@ -203,6 +278,59 @@ mod tests {
             u.z > 0.0,
             "up vector should point up for a camera above the grid"
         );
+    }
+
+    #[test]
+    fn standard_views_put_the_expected_axes_on_screen() {
+        let close3 = |a: Vector3, b: Vector3| (a - b).length() < 1e-2;
+        let mut camera = Camera::default();
+        for (view, right, up) in [
+            (StandardView::Front, Vector3::X, Vector3::Z),
+            (StandardView::Right, Vector3::Y, Vector3::Z),
+            (StandardView::Back, -Vector3::X, Vector3::Z),
+            (StandardView::Left, -Vector3::Y, Vector3::Z),
+            (StandardView::Top, Vector3::X, Vector3::Y),
+            (StandardView::Bottom, Vector3::X, -Vector3::Y),
+        ] {
+            camera.set_view(view);
+            assert!(
+                close3(camera.right(), right),
+                "{view:?}: right {}",
+                camera.right()
+            );
+            assert!(close3(camera.up(), up), "{view:?}: up {}", camera.up());
+        }
+        camera.set_view(StandardView::Home);
+        assert!(close3(
+            camera.back(),
+            Vector3::new(1.0, -1.0, 1.0).normalize()
+        ));
+    }
+
+    #[test]
+    fn interpolation_hits_both_ends_and_turns_the_short_way() {
+        let from = Camera {
+            yaw: 3.0,
+            distance: 10.0,
+            ..Camera::default()
+        };
+        let to = Camera {
+            yaw: -3.0,
+            distance: 1000.0,
+            target: Point3::new(1.0, 2.0, 3.0),
+            ..Camera::default()
+        };
+        assert_eq!(Camera::interpolate(&from, &to, 0.0), from);
+        let end = Camera::interpolate(&from, &to, 1.0);
+        assert!(
+            (end.yaw.sin() - to.yaw.sin()).abs() < 1e-12
+                && (end.yaw.cos() - to.yaw.cos()).abs() < 1e-12
+        );
+        assert!((end.distance - 1000.0).abs() < 1e-9);
+        let mid = Camera::interpolate(&from, &to, 0.5);
+        // 3 and -3 radians are 0.28 apart across +-pi, not 6 apart through 0.
+        assert!(mid.yaw.cos() < -0.98, "went the long way: yaw {}", mid.yaw);
+        assert!((mid.distance - 100.0).abs() < 1e-9);
     }
 
     #[test]
