@@ -27,20 +27,22 @@
 //!   quadrature; closest point by sampling, Newton (section 6.1) and a
 //!   branch-and-bound check over Bezier segments.
 //! - [`fit`]: curve fitting through points; parametrization and averaged
-//!   knots (eq. 9.4, 9.5, 9.8), global interpolation (A9.1) with optional
+//!   knots (section 9.2.1, eq. 9.8), global interpolation (A9.1) with optional
 //!   end tangents, and least-squares approximation with a tolerance search
 //!   (section 9.4.1).
+//! - [`conics`]: exact circular and elliptical arcs (A7.1) and open conic
+//!   arcs through a point (A7.2, A7.3) as rational quadratics.
 //!
 //! The Gauss-Legendre rules and the Newton iteration are local and private
 //! for now; they move to the numerics in `bevel-math` once it has them.
 //!
-//! Next: curve construction (exact circles, arcs and conics as rational
-//! quadratics; interpolation and least-squares fitting), analytic curves and
+//! Next: curve interpolation and least-squares fitting, analytic curves and
 //! the `CurveGeom` trait, then NURBS and analytic surfaces, and
 //! intersections with booleans.
 
 pub mod basis;
 pub mod fit;
+pub mod conics;
 
 mod error;
 mod gauss_legendre;
@@ -48,6 +50,7 @@ mod homogeneous;
 mod knots;
 mod nurbs;
 
+pub use conics::{circle_arc, circle_arc_2d, conic_arc, ellipse_arc, ellipse_arc_2d};
 pub use error::GeomError;
 pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
