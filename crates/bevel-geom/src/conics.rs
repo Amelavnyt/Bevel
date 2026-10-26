@@ -75,6 +75,8 @@ pub(crate) struct UnitArc {
     pub(crate) points: Vec<DVec2>,
     /// Weights: 1 at the segment ends, `cos(dtheta / 2)` in the middle.
     pub(crate) weights: Vec<f64>,
+    /// `true` for a full turn, where the last point is a copy of the first.
+    pub(crate) full: bool,
 }
 
 /// The arc of the unit circle from angle `start` to `end`
@@ -141,6 +143,7 @@ pub(crate) fn unit_arc(start: f64, end: f64) -> Result<UnitArc, GeomError> {
         knots,
         points,
         weights,
+        full,
     })
 }
 

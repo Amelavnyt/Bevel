@@ -52,6 +52,7 @@
 mod closest;
 mod knot_ops;
 mod structure;
+mod swept;
 
 pub use closest::SurfaceClosestPoint;
 

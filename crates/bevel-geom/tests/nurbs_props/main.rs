@@ -9,6 +9,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod basis;
+mod compat;
 mod degree;
 mod eval;
 mod knot_ops;

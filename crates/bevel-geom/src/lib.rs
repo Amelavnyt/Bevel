@@ -39,14 +39,20 @@
 //!   decomposition (A5.7), splitting, reversal, swapping `u` and `v`,
 //!   isocurves, transforms and closedness checks; closest point
 //!   ([`SurfaceClosestPoint`]) by sampling, Newton (section 6.1) and a
-//!   branch-and-bound check over Bezier patches.
+//!   branch-and-bound check over Bezier patches; exact surfaces of
+//!   revolution (A8.1), extrusions (general cylinders), ruled surfaces and
+//!   bilinear patches.
+//! - [`make_compatible`]: curves brought to a common degree, domain and
+//!   knot vector, as ruled surfaces and lofts need.
 //!
-//! The Gauss-Legendre rules and the Newton iteration are local and private
-//! for now; they move to the numerics in `bevel-math` once it has them.
+//! The curve arc length still uses a local copy of the Gauss-Legendre
+//! rules; the closest-point iterations keep their own Newton loops, since
+//! the book's convergence tests and the distance-decreasing step control
+//! differ from the residual-based iteration in `bevel_math::newton`.
 //!
-//! Next: curve interpolation and least-squares fitting, analytic curves and
-//! the `CurveGeom` trait, then NURBS and analytic surfaces, and
-//! intersections with booleans.
+//! Next: curve interpolation and least-squares fitting, lofts and other
+//! surface fitting, analytic curves and surfaces with the `CurveGeom` and
+//! `SurfaceGeom` traits, and intersections with booleans.
 
 pub mod basis;
 pub mod fit;
@@ -64,7 +70,7 @@ pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
 pub use nurbs::{
     ClosestPoint, Curvatures, NurbsCurve, NurbsCurve2, NurbsCurve3, NurbsSurface,
-    SurfaceClosestPoint,
+    SurfaceClosestPoint, make_compatible,
 };
 
 /// The highest supported degree for curves and surfaces.
