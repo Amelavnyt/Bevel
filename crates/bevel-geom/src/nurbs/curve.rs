@@ -29,6 +29,7 @@
 //! except degree reduction and knot removal leave the geometry unchanged up
 //! to rounding; those two stay within the tolerance they are given.
 
+mod degree;
 mod knot_ops;
 mod structure;
 

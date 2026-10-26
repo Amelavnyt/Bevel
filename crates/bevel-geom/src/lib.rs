@@ -22,10 +22,10 @@
 //!   evaluation, derivatives (A3.2, A4.1, A4.2), tangent, curvature,
 //!   transforms and control-point bounds; knot insertion, refinement and
 //!   removal (A5.1, A5.4, A5.8); clamping, Bezier decomposition (A5.6),
-//!   splitting, reversal and reparametrisation.
+//!   splitting, reversal and reparametrisation; degree elevation (A5.9) and
+//!   reduction with an error bound.
 //!
-//! Next: degree elevation and reduction, arc length and point inversion for
-//! curves, then analytic curves, NURBS and analytic surfaces, and
+//! Next: arc length and point inversion for curves, then analytic curves, NURBS and analytic surfaces, and
 //! intersections with booleans.
 
 pub mod basis;
