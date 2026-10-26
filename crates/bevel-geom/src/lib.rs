@@ -50,13 +50,13 @@
 //! the book's convergence tests and the distance-decreasing step control
 //! differ from the residual-based iteration in `bevel_math::newton`.
 //!
-//! Next: curve interpolation and least-squares fitting, lofts and other
-//! surface fitting, analytic curves and surfaces with the `CurveGeom` and
-//! `SurfaceGeom` traits, and intersections with booleans.
+//! Next: surface interpolation and least-squares fitting, analytic curves
+//! and surfaces with the `CurveGeom` and `SurfaceGeom` traits, then
+//! intersections for booleans.
 
 pub mod basis;
-pub mod fit;
 pub mod conics;
+pub mod fit;
 
 mod error;
 mod gauss_legendre;
