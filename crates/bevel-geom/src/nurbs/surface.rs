@@ -45,8 +45,11 @@
 //! splitting, reversal, isocurves and transforms live in the submodules;
 //! each one documents the algorithm it uses.
 
+mod closest;
 mod knot_ops;
 mod structure;
+
+pub use closest::SurfaceClosestPoint;
 
 use bevel_math::{Aabb3, DVec3, DVec4, Point3, Vector3};
 

@@ -15,6 +15,7 @@ mod knot_ops;
 mod measure;
 mod strategies;
 mod structure;
+mod surface_closest;
 mod surface_eval;
 mod surface_ops;
 mod surface_structure;
