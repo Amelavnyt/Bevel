@@ -30,6 +30,7 @@
 //! to rounding; those two stay within the tolerance they are given.
 
 mod knot_ops;
+mod structure;
 
 use bevel_math::{Aabb3, DMat3, DMat4, DVec3, DVec4};
 
@@ -46,6 +47,7 @@ const RATIONAL_WEIGHT_TOLERANCE: f64 = 1e-14;
 /// Use [`NurbsCurve2`] for curves in the plane (sketches, parameter space)
 /// and [`NurbsCurve3`] for curves in model space.
 #[derive(Clone, Debug, PartialEq)]
+#[must_use]
 pub struct NurbsCurve<H: Homogeneous> {
     /// Invariant: `1 <= degree <= MAX_DEGREE`.
     degree: usize,

@@ -21,10 +21,11 @@
 //! - [`NurbsCurve`] ([`NurbsCurve2`], [`NurbsCurve3`]): construction,
 //!   evaluation, derivatives (A3.2, A4.1, A4.2), tangent, curvature,
 //!   transforms and control-point bounds; knot insertion, refinement and
-//!   removal (A5.1, A5.4, A5.8).
+//!   removal (A5.1, A5.4, A5.8); clamping, Bezier decomposition (A5.6),
+//!   splitting, reversal and reparametrisation.
 //!
-//! Next: degree elevation and reduction, decomposition, splitting, arc
-//! length and point inversion for curves, then analytic curves, NURBS and analytic surfaces, and
+//! Next: degree elevation and reduction, arc length and point inversion for
+//! curves, then analytic curves, NURBS and analytic surfaces, and
 //! intersections with booleans.
 
 pub mod basis;

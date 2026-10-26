@@ -129,6 +129,28 @@ pub fn any_curve2() -> impl Strategy<Value = NurbsCurve2> {
     prop_oneof![curve2(true), curve2(false)]
 }
 
+/// `c` on an unclamped knot vector: the `p` knots before the domain and the
+/// `p` after it are spread out instead of repeated. The domain stays the
+/// same but the curve no longer interpolates its end control points.
+pub fn unclamp<H: Homogeneous>(c: &NurbsCurve<H>) -> NurbsCurve<H> {
+    let p = c.degree();
+    let (a, b) = c.domain();
+    let delta = 0.1 * (b - a);
+    let mut knots = c.knots().as_slice().to_vec();
+    let m = knots.len() - 1;
+    for i in 0..p {
+        knots[i] = a - (p - i) as f64 * delta;
+        knots[m - i] = b + (p - i) as f64 * delta;
+    }
+    let kv = KnotVector::new(knots, p).unwrap();
+    NurbsCurve::new(p, kv, c.control_weighted().to_vec()).unwrap()
+}
+
+/// A random unclamped 3D curve, rational or not.
+pub fn unclamped_curve3() -> impl Strategy<Value = NurbsCurve3> {
+    any_curve3().prop_map(|c| unclamp(&c))
+}
+
 /// The length scale of a curve: the largest control point distance from the
 /// origin, at least 1.
 pub fn size<H: Homogeneous>(c: &NurbsCurve<H>) -> f64 {
