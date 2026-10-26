@@ -1,0 +1,104 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Amelavnyt/bevel"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+bevel-math = { path = "crates/bevel-math" }
+bevel-geom = { path = "crates/bevel-geom" }
+bevel-solver = { path = "crates/bevel-solver" }
+bevel-expr = { path = "crates/bevel-expr" }
+bevel-timeline = { path = "crates/bevel-timeline" }
+bevel-render = { path = "crates/bevel-render" }
+bevel-kernel = { path = "crates/bevel-kernel" }
+bevel-sketch = { path = "crates/bevel-sketch" }
+bevel-model = { path = "crates/bevel-model" }
+bevel-io = { path = "crates/bevel-io" }
+bevel-doc = { path = "crates/bevel-doc" }
+bevel-script = { path = "crates/bevel-script" }
+bevel-ui = { path = "crates/bevel-ui" }
+
+# Math and geometry
+glam = "0.34.1"
+nalgebra = "0.35.0"
+robust = "1.2.0"
+spade = "2.15.1"
+slotmap = "1.1.1"
+
+# Serialization and storage
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+ron = "0.12.2"
+blake3 = { version = "1.8.7", features = ["pure"] }
+zip = { version = "9.1.2", default-features = false, features = ["deflate"] }
+quick-xml = "0.42.0"
+
+# Errors, logging, parallelism
+thiserror = "2.0.21"
+anyhow = "1.0.104"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "fmt", "registry", "tracing-log", "ansi"] }
+rayon = "1.12.0"
+
+# Scripting
+rhai = "1.27.0"
+
+# UI and rendering
+egui = { version = "0.37.0", features = ["default_fonts", "monochrome_emoji_fonts"] }
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }
+egui_extras = "0.37.0"
+wgpu = "30.0.1"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+
+# Web platform
+wasm-bindgen-futures = "0.4.79"
+web-sys = "0.3.106"
+
+# Testing
+proptest = "1.12.0"
+insta = "1.49.0"
+criterion = "0.8.2"
+egui_kittest = "0.37.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Library crates must not panic on user input; tests opt back in via clippy.toml.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+# Allow-list for pedantic lints (keep short; see CONTRIBUTING.md):
+# geometry code legitimately converts between f32/f64/usize and uses short math names.
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+many_single_char_names = "allow"
+similar_names = "allow"
+# Crate-prefixed type names (e.g. `KernelError` in bevel-kernel) are intentional.
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.dev]
+# Geometry code is unbearably slow at opt-level 0; keep debug info but optimize a little.
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+
+[profile.release-web]
+inherits = "release"
+opt-level = "s"
