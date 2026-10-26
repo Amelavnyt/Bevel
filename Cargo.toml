@@ -61,7 +61,6 @@ rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] 
 
 # Web platform
 wasm-bindgen-futures = "0.4.79"
-web-sys = "0.3.106"
 
 # Testing
 proptest = "1.12.0"
