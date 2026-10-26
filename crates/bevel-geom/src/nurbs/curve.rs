@@ -252,7 +252,7 @@ impl<H: Homogeneous> NurbsCurve<H> {
     /// derivatives are those of the span that starts there (the last span at
     /// the end of the domain).
     pub fn derivatives(&self, u: f64, n: usize) -> Vec<H::Point> {
-        let mut out = vec![H::point_zero(); n + 1];
+        let mut out = vec![H::point_zero(); n.saturating_add(1)];
         self.derivatives_into(u, &mut out);
         out
     }

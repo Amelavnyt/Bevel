@@ -49,7 +49,7 @@ impl<H: Homogeneous> NurbsCurve<H> {
         if t == 0 {
             return Ok(self.clone());
         }
-        let ph = self.degree + t;
+        let ph = self.degree.saturating_add(t);
         if ph > MAX_DEGREE {
             return Err(GeomError::InvalidDegree { degree: ph });
         }
@@ -441,7 +441,7 @@ mod tests {
             Err(GeomError::InvalidDegree { degree: 1 })
         ));
         assert!(matches!(
-            line.elevate_degree(crate::MAX_DEGREE),
+            line.elevate_degree(usize::MAX),
             Err(GeomError::InvalidDegree { .. })
         ));
         assert!(matches!(

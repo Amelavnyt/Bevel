@@ -53,7 +53,7 @@ impl<H: Homogeneous> NurbsCurve<H> {
         }
         let p = self.degree;
         let s = self.knots.multiplicity(u);
-        if s + r > p {
+        if s.saturating_add(r) > p {
             return Err(GeomError::InvalidKnotVector(
                 "knot multiplicity would exceed the degree",
             ));
@@ -426,6 +426,10 @@ mod tests {
         assert_eq!(d.knots().as_slice(), &[0.0, 0.0, 0.5, 1.0, 2.0, 2.0]);
         assert!(c.refine_knots(&[0.5, 1.0]).is_err());
         assert_eq!(c.insert_knot(0.5, 0).unwrap(), c);
+        assert!(matches!(
+            c.insert_knot(0.5, usize::MAX),
+            Err(GeomError::InvalidKnotVector(_))
+        ));
     }
 
     #[test]
