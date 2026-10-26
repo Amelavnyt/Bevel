@@ -118,12 +118,18 @@ pub(crate) fn ders_basis_funs_raw(
     ders
 }
 
+/// `u` clamped to the domain of degree `p`; NaN stays NaN.
+fn clamp_to_domain(knots: &KnotVector, p: usize, u: f64) -> f64 {
+    let (a, b) = knots.domain(p);
+    if u.is_nan() { u } else { u.clamp(a, b) }
+}
+
 /// Evaluates the `p + 1` basis functions of degree `p` that are non-zero at
 /// `u` (The NURBS Book, A2.2).
 ///
 /// Writes `N_{i-p,p}(u), ..., N_{i,p}(u)` to `out[0..=p]` and returns the
-/// span index `i` (see [`KnotVector::find_span`]). For `u` outside the
-/// domain the polynomial piece of the nearest span is extrapolated.
+/// span index `i` (see [`KnotVector::find_span`]). Parameters outside the
+/// domain are clamped to it, so the values are never negative.
 ///
 /// # Errors
 ///
@@ -140,6 +146,7 @@ pub fn basis_funs(
         return Err(GeomError::InvalidDegree { degree: p });
     }
     let span = knots.find_span(p, u)?;
+    let u = clamp_to_domain(knots, p, u);
     let Some(out) = out.get_mut(..=p) else {
         return Err(GeomError::InvalidArgument("output buffer too short"));
     };
@@ -153,7 +160,8 @@ pub fn basis_funs(
 ///
 /// `out` is a row-major `(n + 1) x (p + 1)` table: `out[k * (p + 1) + j]` is
 /// the `k`-th derivative of `N_{i-p+j,p}` at `u`, where `i` is the returned
-/// span index. Rows with `k > p` are zero.
+/// span index. Rows with `k > p` are zero. Parameters outside the domain are
+/// clamped to it.
 ///
 /// # Errors
 ///
@@ -169,6 +177,7 @@ pub fn ders_basis_funs(
         return Err(GeomError::InvalidDegree { degree: p });
     }
     let span = knots.find_span(p, u)?;
+    let u = clamp_to_domain(knots, p, u);
     let needed = (n + 1).saturating_mul(p + 1);
     let Some(out) = out.get_mut(..needed) else {
         return Err(GeomError::InvalidArgument("output buffer too short"));
@@ -212,6 +221,28 @@ mod tests {
         for (a, b) in d[6..9].iter().zip([1.0, -2.0, 1.0]) {
             assert!((a - b).abs() < 1e-14);
         }
+    }
+
+    /// Found by the property tests: an evenly spaced parameter list can end
+    /// an ulp past the domain, where the extrapolated basis functions go
+    /// slightly negative.
+    #[test]
+    fn parameters_past_the_domain_are_clamped() {
+        let k = KnotVector::clamped_from_interior(4, 0.3, 4.2, &[1.0, 2.5, 2.5, 3.9]).unwrap();
+        let mut at_end = [0.0; 5];
+        let mut past = [0.0; 5];
+        basis_funs(&k, 4, 4.2, &mut at_end).unwrap();
+        basis_funs(&k, 4, 4.2 + 1e-9, &mut past).unwrap();
+        assert!(
+            at_end
+                .iter()
+                .zip(&past)
+                .all(|(a, b)| a.to_bits() == b.to_bits())
+        );
+        assert!(past.iter().all(|&v| v >= 0.0));
+        let mut d = [0.0; 10];
+        ders_basis_funs(&k, 4, 0.3 - 1e-9, 1, &mut d).unwrap();
+        assert!(d[..5].iter().all(|&v| v >= 0.0));
     }
 
     #[test]
