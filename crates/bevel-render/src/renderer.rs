@@ -53,6 +53,24 @@ impl ViewportTheme {
     };
 }
 
+/// Which helpers the viewport draws around the model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ViewportOverlays {
+    /// The ground grid in the XY plane.
+    pub grid: bool,
+    /// The X, Y and Z axes through the origin.
+    pub axes: bool,
+}
+
+impl Default for ViewportOverlays {
+    fn default() -> Self {
+        Self {
+            grid: true,
+            axes: true,
+        }
+    }
+}
+
 /// Converts an sRGB byte colour with straight alpha to linear floats.
 fn linear(color: [u8; 4]) -> [f32; 4] {
     let channel = |c: u8| {
@@ -69,6 +87,15 @@ fn linear(color: [u8; 4]) -> [f32; 4] {
         channel(color[2]),
         f32::from(color[3]) / 255.0,
     ]
+}
+
+/// The colour, or fully transparent when `visible` is false.
+fn shown(color: [f32; 4], visible: bool) -> [f32; 4] {
+    if visible {
+        color
+    } else {
+        [color[0], color[1], color[2], 0.0]
+    }
 }
 
 fn f32_bytes(values: &[f32]) -> Vec<u8> {
@@ -112,6 +139,7 @@ struct GpuLines {
 pub struct ViewportRenderer {
     sample_count: u32,
     theme: ViewportTheme,
+    overlays: ViewportOverlays,
     globals: wgpu::Buffer,
     globals_bind_group: wgpu::BindGroup,
     pipelines: Pipelines,
@@ -188,6 +216,7 @@ impl ViewportRenderer {
         Self {
             sample_count,
             theme: ViewportTheme::DARK,
+            overlays: ViewportOverlays::default(),
             globals,
             globals_bind_group,
             pipelines,
@@ -202,6 +231,11 @@ impl ViewportRenderer {
     /// Sets the viewport colours.
     pub fn set_theme(&mut self, theme: ViewportTheme) {
         self.theme = theme;
+    }
+
+    /// Chooses which helpers (grid, axes) are drawn.
+    pub fn set_overlays(&mut self, overlays: ViewportOverlays) {
+        self.overlays = overlays;
     }
 
     /// Bounding box of everything set with [`ViewportRenderer::set_scene`].
@@ -353,12 +387,17 @@ impl ViewportRenderer {
                 pass.set_vertex_buffer(0, lines.vertices.slice(..));
                 pass.draw(0..lines.vertex_count, 0..1);
             }
-            pass.set_vertex_buffer(0, self.axis_lines.slice(..));
-            pass.draw(0..2, 0..1);
+            if self.overlays.axes {
+                pass.set_vertex_buffer(0, self.axis_lines.slice(..));
+                pass.draw(0..2, 0..1);
+            }
 
             // Translucent grid last so it blends over what's already drawn.
-            pass.set_pipeline(&self.pipelines.grid);
-            pass.draw(0..6, 0..1);
+            // The same pass draws the X and Y axes.
+            if self.overlays.grid || self.overlays.axes {
+                pass.set_pipeline(&self.pipelines.grid);
+                pass.draw(0..6, 0..1);
+            }
         }
         queue.submit([encoder.finish()]);
 
@@ -443,10 +482,10 @@ impl ViewportRenderer {
             [size[0] as f32, size[1] as f32, orthographic, 0.0],
             linear(self.theme.background_top),
             linear(self.theme.background_bottom),
-            linear(self.theme.grid_minor),
-            linear(self.theme.grid_major),
-            linear(self.theme.axis_x),
-            linear(self.theme.axis_y),
+            shown(linear(self.theme.grid_minor), self.overlays.grid),
+            shown(linear(self.theme.grid_major), self.overlays.grid),
+            shown(linear(self.theme.axis_x), self.overlays.axes),
+            shown(linear(self.theme.axis_y), self.overlays.axes),
         ];
         data[..16].copy_from_slice(&camera.view_projection(aspect).as_mat4().to_cols_array());
         data[16..32].copy_from_slice(&camera.view().as_mat4().to_cols_array());

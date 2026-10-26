@@ -55,7 +55,7 @@ rhai = "1.27.0"
 # UI and rendering
 egui = { version = "0.37.0", features = ["default_fonts", "monochrome_emoji_fonts"] }
 eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "wayland", "x11"] }
-egui_extras = "0.37.0"
+egui_extras = { version = "0.37.0", default-features = false, features = ["svg"] }
 wgpu = "30.0.1"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 

@@ -4,7 +4,7 @@
 //! and keeps that texture registered with egui's wgpu renderer.
 
 use bevel_math::Aabb3;
-use bevel_render::{Camera, ViewportRenderer};
+use bevel_render::{Camera, ViewportOverlays, ViewportRenderer};
 use eframe::egui_wgpu::{self, wgpu};
 
 pub struct Viewport {
@@ -21,6 +21,10 @@ impl Viewport {
             renderer,
             texture: None,
         }
+    }
+
+    pub fn set_overlays(&mut self, overlays: ViewportOverlays) {
+        self.renderer.set_overlays(overlays);
     }
 
     pub fn scene_bounds(&self) -> Aabb3 {

@@ -23,6 +23,6 @@ mod camera;
 mod mesh;
 mod renderer;
 
-pub use camera::{Camera, Projection};
+pub use camera::{Camera, Projection, StandardView};
 pub use mesh::{LineSet, TriangleMesh};
-pub use renderer::{RenderOutput, ViewportRenderer, ViewportTheme};
+pub use renderer::{RenderOutput, ViewportOverlays, ViewportRenderer, ViewportTheme};

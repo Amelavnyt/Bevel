@@ -347,20 +347,23 @@ This describes what the code does today.
 
 ### Layout
 
-The layout is dark by default and modelled on common parametric CAD workspaces.
+The layout is dark by default and modelled on common parametric CAD tools.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ File Edit View │ [SOLID] [INSPECT] [SCRIPTS]  tools…          │ main ▾   │
+│ ◆ Bevel  File Edit View Help │ new open save │ undo redo   Untitled  main▾│  app bar
+├──────────────────────────────────────────────────────────────────────────┤
+│ [icons]   │ [icons] │ [icons]   │ [icons] │ [icon] │ [icon]              │  toolbar
+│ CREATE ▾  │ MODIFY ▾│ CONSTRUCT▾│ INSPECT▾│ INSERT▾│ UTILITIES ▾         │
 ├───────────────┬──────────────────────────────────────────┬───────────────┤
-│ Browser       │                                          │ Properties /  │
-│ ▸ Origin      │              3D viewport                 │ feature panel │
-│ ▸ Parameters  │       view cube · grid · axes            │ (schema-driven│
-│ ▸ Sketches    │                                          │  fields,      │
-│ ▸ Bodies      │                                          │  expressions, │
-│ ▸ Construction│                                          │  OK / Cancel) │
+│ BROWSER       │                               view cube  │ PROPERTIES    │
+│ ▾ Untitled    │                                          │ (selection or │
+│   ▸ 👁 Origin  │              3D viewport                 │  feature      │
+│   ▸ Parameters│                                          │  dialog)      │
+│   ▸ Sketches  │ xyz                                      │               │
+│   ▸ Bodies    │        [home fit │ persp ortho │ grid]   │               │
 ├───────────────┴──────────────────────────────────────────┴───────────────┤
-│ ⏮ ◀ ▶ ⏭  [Sketch1][Extrude1][Fillet1] ▌ [Hole1][Pattern1]   part timeline│
+│ ⏮ ◀ ▶ ⏭  [Sketch1][Extrude1][Fillet1] ▌ [Hole1][Pattern1]            mm │  timeline
 └──────────────────────────────────────────────────────────────────────────┘
 
 While a sketch is open, the same bar shows that sketch's timeline instead:
@@ -369,7 +372,33 @@ While a sketch is open, the same bar shows that sketch's timeline instead:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Sketching is part of solid modeling, not a separate workspace. Create Sketch is the first tool in the SOLID toolbar. While a sketch is open, the toolbar shows the sketch tools (line, arc, circle, rectangle, spline, dimension, constraints, trim, extend, offset, ...) and Finish Sketch in place of the SOLID tools, and the bottom bar shows the sketch's timeline. Finishing the sketch brings both back.
+There is one design workspace and no workspace tabs. The toolbar groups tools the way parametric CAD users expect, and every group lists all of its tools, with icons and shortcuts, in the menu under its label. A few common tools are pinned as large icons:
+
+| Group | Pinned | Also in the menu |
+|---|---|---|
+| CREATE | Create Sketch, Extrude, Revolve, Hole, Box | Sweep, Loft, Thread, Cylinder, Sphere, Cone, Torus, Rectangular/Circular Pattern, Mirror |
+| MODIFY | Fillet, Chamfer, Shell, Combine | Draft, Split Body, Move/Copy |
+| CONSTRUCT | Offset Plane, Axis | Point |
+| INSPECT | Measure, Section Analysis | Mass Properties |
+| INSERT | Insert STEP | |
+| UTILITIES | Run Script | Script Editor |
+
+The tool list lives in `bevel-ui/src/tools.rs`. Each tool records its group, icon, shortcut, description and the roadmap phase that implements it. Until a tool exists, clicking it shows a notice saying which phase brings it.
+
+Sketching and inspection are tools, not modes the user switches into. Create Sketch is the first CREATE tool. While a sketch is open, the toolbar shows the sketch tools (line, arc, circle, rectangle, spline, dimension, constraints, trim, extend, offset, ...) and Finish Sketch, and the bottom bar shows the sketch's timeline. Finishing the sketch brings both back. Measure and Section Analysis work alongside modeling.
+
+Controls over the viewport:
+
+- **View cube** (top right): turns with the camera. Clicking a face animates to that standard view (Top, Front, Right, Back, Left, Bottom).
+- **Navigation bar** (bottom centre): Home view, Fit All, perspective/orthographic, grid and origin-axes toggles.
+- **Axis triad** (bottom left): the world X/Y/Z directions.
+- **Notices** appear above the navigation bar for a few seconds.
+
+View changes (standard views, Home, Fit All) are animated; any mouse navigation cancels the animation.
+
+### Icons and theme
+
+Icons are SVGs in `assets/icons/`, drawn on a 32×32 grid in one simple, flat style: isometric bodies in three tones of a light teal-grey with a single outline and no gradients, the part an operation affects in the accent green (`#77C89D`), and light line icons for app commands. The logo uses the signature teal (`#2D8985`). They are embedded with `include_image!` and rasterized by egui_extras' SVG loader (resvg, pure Rust) at the size they are shown. `bevel_ui::install` registers the loaders and applies the theme from `bevel-ui/src/theme.rs`: signature teal for selection, focus and toggled controls, the accent green for highlights. See [ADR-0015](DECISIONS.md#adr-0015-one-design-workspace-with-an-svg-icon-set).
 
 ### App state and tools
 
