@@ -10,6 +10,8 @@
 //! robust predicates, root finding, Newton iteration and quadrature arrive
 //! in the "Math & NURBS" phase of the roadmap.
 
+pub mod predicates;
+pub mod roots;
 pub mod tol;
 
 mod aabb;
