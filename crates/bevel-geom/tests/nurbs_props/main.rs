@@ -17,3 +17,4 @@ mod strategies;
 mod structure;
 mod surface_eval;
 mod surface_ops;
+mod surface_structure;

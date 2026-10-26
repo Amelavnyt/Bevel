@@ -271,6 +271,30 @@ impl KnotVector {
         self.knots.iter().filter(|&&k| (k - u).abs() <= tol).count()
     }
 
+    /// The knot vector mapped by `u -> a + b - u` and put back in order,
+    /// where `[a, b]` is the domain for degree `p`: the knots of the
+    /// reversed curve (The NURBS Book, eq. 6.13).
+    pub(crate) fn reversed(&self, p: usize) -> Self {
+        let (a, b) = self.domain(p);
+        // Equal knots map to equal values, and the domain ends map exactly
+        // onto each other, so the result is snapped like the original.
+        let knots = self
+            .knots
+            .iter()
+            .rev()
+            .map(|&u| {
+                if self.same(u, a) {
+                    b
+                } else if self.same(u, b) {
+                    a
+                } else {
+                    (a + b) - u
+                }
+            })
+            .collect();
+        Self { knots }
+    }
+
     /// The distinct knot values in increasing order.
     pub fn breakpoints(&self) -> Vec<f64> {
         self.distinct().into_iter().map(|(u, _)| u).collect()

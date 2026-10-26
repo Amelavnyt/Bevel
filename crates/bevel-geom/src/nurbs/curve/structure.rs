@@ -180,26 +180,8 @@ impl<H: Homogeneous> NurbsCurve<H> {
     /// The same curve traversed backwards: the reversed curve at
     /// `a + b - u` is the original at `u`, where `[a, b]` is the domain.
     pub fn reversed(&self) -> Self {
-        let (a, b) = self.domain();
-        // Equal knots map to equal values, and the domain ends map exactly
-        // onto each other, so the result is snapped like the original.
-        let knots = self
-            .knots
-            .as_slice()
-            .iter()
-            .rev()
-            .map(|&u| {
-                if self.knots.same(u, a) {
-                    b
-                } else if self.knots.same(u, b) {
-                    a
-                } else {
-                    (a + b) - u
-                }
-            })
-            .collect();
         let control = self.control.iter().rev().copied().collect();
-        Self::from_parts(self.degree, KnotVector::from_raw(knots), control)
+        Self::from_parts(self.degree, self.knots.reversed(self.degree), control)
     }
 
     /// The same curve on the domain `[start, end]`: the new curve at

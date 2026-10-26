@@ -46,6 +46,7 @@
 //! each one documents the algorithm it uses.
 
 mod knot_ops;
+mod structure;
 
 use bevel_math::{Aabb3, DVec3, DVec4, Point3, Vector3};
 
