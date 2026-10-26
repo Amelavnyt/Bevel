@@ -56,6 +56,7 @@
 mod approximate;
 mod interpolate;
 mod solve;
+mod surface;
 
 use std::fmt::Debug;
 use std::ops::{Add, Mul, Sub};
@@ -67,6 +68,7 @@ use crate::{GeomError, Homogeneous, KnotVector};
 
 pub use approximate::{approximate, approximate_to_tolerance};
 pub use interpolate::{interpolate, interpolate_with_tangents};
+pub use surface::{approximate_surface, interpolate_surface, surface_parameters};
 
 /// Consecutive data points closer than this fraction of the data extent are
 /// treated as coincident.
