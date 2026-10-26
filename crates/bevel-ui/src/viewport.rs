@@ -192,7 +192,7 @@ fn notice(ui: &egui::Ui, viewport: egui::Rect, above: f32, state: &mut UiState) 
         rect,
         8.0,
         theme::OVERLAY.gamma_multiply(alpha),
-        egui::Stroke::new(1.0, theme::HIGHLIGHT.gamma_multiply(alpha)),
+        egui::Stroke::new(1.0, theme::ACCENT_LIGHT.gamma_multiply(alpha)),
         egui::StrokeKind::Inside,
     );
     painter.galley(rect.min + egui::vec2(14.0, 8.0), galley, theme::TEXT);

@@ -37,7 +37,7 @@ pub(crate) fn show(ui: &mut egui::Ui) {
         painter.vline(
             x,
             track.y_range().shrink(4.0),
-            egui::Stroke::new(2.5, theme::HIGHLIGHT),
+            egui::Stroke::new(2.5, theme::ACCENT_LIGHT),
         );
         painter.text(
             egui::pos2(x + 12.0, track.center().y),
