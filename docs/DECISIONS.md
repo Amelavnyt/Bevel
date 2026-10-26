@@ -29,6 +29,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design these decisions produce.
 | 0013 | Z-up world and reverse-Z depth | Accepted |
 | 0014 | Exceptions to the dependency rules for the application shell | Accepted |
 | 0015 | One design workspace with an SVG icon set | Accepted |
+| 0016 | NURBS stored in homogeneous coordinates, one implementation for 2D and 3D | Accepted |
 
 ## ADR-0001: 100% Rust, no C/C++ in the build
 
@@ -187,3 +188,13 @@ Status: Accepted (2026-10-26)
 **Decision.** Bevel has a single design workspace. The toolbar groups tools as CREATE, MODIFY, CONSTRUCT, INSPECT, INSERT and UTILITIES; sketch tools replace the toolbar's contents only while a sketch is open. Tools are shown as icons from a project-owned SVG set in `assets/icons/`, rendered with egui_extras' `svg` feature (resvg, usvg and tiny-skia: pure Rust, MIT/Apache, accepted by the pure-Rust guard and cargo-deny). Icons are drawn for Bevel rather than taken from another product's set.
 
 **Consequences.** New tools need an icon in the same style (32×32, flat bodies in three shades of light neutral grey with one outline, the affected part in the signature teal `#2D8985`; keep icons simple enough to read at 16 px). Teal is the dominant UI colour; the accent green `#77C89D` is secondary. SVGs are rasterized at run time, which costs a little start-up time and keeps icons sharp at any scale. Workspace tabs can return later for genuinely different environments (assemblies, drawings) without changing how part modeling is organized.
+
+## ADR-0016: NURBS stored in homogeneous coordinates, one implementation for 2D and 3D
+
+Status: Accepted (2026-10-26)
+
+**Context.** Sketches need 2D NURBS curves, the kernel needs 3D curves and surfaces, and the core algorithms (evaluation, derivatives, knot insertion and removal, degree elevation and reduction, Bézier decomposition) are the same in both. The NURBS Book formulates almost all of them on the weighted control points P<sup>w</sup> = (w·P, w) and projects at the end. Writing each algorithm twice, or converting between weighted and unweighted forms around every call, invites subtle divergences and loses precision.
+
+**Decision.** Control points are stored in homogeneous form (`DVec3` for 2D, `DVec4` for 3D). A `Homogeneous` trait in `bevel-geom` provides the few operations the algorithms need (weight, weighted part, projection, dot product), and `NurbsCurve<H: Homogeneous>` implements every algorithm once, with `NurbsCurve2` and `NurbsCurve3` as aliases. Weights must be finite and positive, which keeps every curve inside the convex hull of its control points. Algorithms cite their NURBS Book numbers.
+
+**Consequences.** Representation-changing operations work directly on the stored data with no conversions, and 2D and 3D cannot drift apart. Accessors project control points when callers want Cartesian coordinates. Negative or zero weights are rejected rather than supported; that excludes some exotic representations that a CAD kernel does not need.
