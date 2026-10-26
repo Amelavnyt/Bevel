@@ -7,5 +7,35 @@
 //! identity so they can be intersected, measured and exported exactly.
 //! Trims and parameter ranges live in the topology (`bevel-kernel`), not here.
 //!
-//! Status: placeholder. The NURBS core and analytic types arrive in the
-//! "Math & NURBS" phase of the roadmap; intersections arrive with booleans.
+//! The NURBS code follows Piegl and Tiller, *The NURBS Book* (2nd ed.); each
+//! algorithm cites its number there (A2.1, A5.1, ...).
+//!
+//! # Status
+//!
+//! Implemented:
+//!
+//! - [`KnotVector`]: validated knot vectors and span search (A2.1).
+//! - [`basis`]: B-spline basis functions and their derivatives (A2.2, A2.3).
+//! - [`Homogeneous`]: weighted control points, so that every algorithm is
+//!   written once for 2D and 3D.
+//!
+//! Next: NURBS curves (evaluation, knot and degree operations, arc length,
+//! point inversion), then analytic curves, NURBS and analytic surfaces, and
+//! intersections with booleans.
+
+pub mod basis;
+
+mod error;
+mod homogeneous;
+mod knots;
+
+pub use error::GeomError;
+pub use homogeneous::Homogeneous;
+pub use knots::KnotVector;
+
+/// The highest supported degree for curves and surfaces.
+///
+/// Work tables for basis functions are fixed-size arrays of this size, so
+/// evaluation never allocates. Degree 25 matches the limit of the common
+/// exchange kernels.
+pub const MAX_DEGREE: usize = 25;
