@@ -173,7 +173,6 @@ pub fn span_params<H: Homogeneous>(
 
 /// Asserts that `b` at `map(u)` matches `a` at `u` for `count` parameters
 /// across `a`'s domain, to within 1e-9 of the size of `a`.
-#[allow(dead_code)]
 pub fn assert_same_geometry<H: Homogeneous>(
     a: &NurbsCurve<H>,
     b: &NurbsCurve<H>,

@@ -144,9 +144,35 @@ impl KnotVector {
         Self::new(knots, degree)
     }
 
+    /// Wraps knots that the caller guarantees satisfy the type invariant
+    /// (finite, non-decreasing, snapped, valid for the owner's degree).
+    ///
+    /// Used by curve operations that derive a knot vector from a valid one by
+    /// copying its knots or adding knots already snapped to it.
+    pub(crate) fn from_raw(knots: Vec<f64>) -> Self {
+        Self { knots }
+    }
+
     /// The knots.
     pub fn as_slice(&self) -> &[f64] {
         &self.knots
+    }
+
+    /// Returns `u` snapped to a knot when it lies within the tolerance of
+    /// one, and `u` unchanged otherwise.
+    pub(crate) fn snap_param(&self, u: f64) -> f64 {
+        let tol = self.tolerance();
+        self.knots
+            .iter()
+            .copied()
+            .find(|&k| (k - u).abs() <= tol)
+            .unwrap_or(u)
+    }
+
+    /// Index of the last knot equal to `u`, if any.
+    pub(crate) fn last_index_of(&self, u: f64) -> Option<usize> {
+        let tol = self.tolerance();
+        self.knots.iter().rposition(|&k| (k - u).abs() <= tol)
     }
 
     /// Two knots closer than this are the same knot: 1e-12 of the knot range

@@ -9,4 +9,5 @@
 
 mod basis;
 mod eval;
+mod knot_ops;
 mod strategies;

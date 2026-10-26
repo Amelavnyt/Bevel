@@ -29,6 +29,8 @@
 //! except degree reduction and knot removal leave the geometry unchanged up
 //! to rounding; those two stay within the tolerance they are given.
 
+mod knot_ops;
+
 use bevel_math::{Aabb3, DMat3, DMat4, DVec3, DVec4};
 
 use crate::basis::{basis_funs_raw, ders_basis_funs_raw};
