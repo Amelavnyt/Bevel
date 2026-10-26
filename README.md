@@ -43,7 +43,7 @@ Open <http://localhost:8080>. A browser with WebGPU or WebGL2 is required. `trun
 | Zoom (towards the cursor) | Scroll wheel or pinch |
 | Fit all | Home, or View > Fit All |
 
-View > Perspective / Orthographic switches the projection, and View > Log shows the application log.
+Click a face of the view cube (top right of the viewport) to look from that side. The navigation bar at the bottom of the viewport has Home view, Fit All, the perspective/orthographic switch and the grid and origin toggles. Help > Viewport Controls lists all of this in the app.
 
 ## Repository layout
 

@@ -28,6 +28,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design these decisions produce.
 | 0012 | Viewport renders to an offscreen texture shown by egui | Accepted |
 | 0013 | Z-up world and reverse-Z depth | Accepted |
 | 0014 | Exceptions to the dependency rules for the application shell | Accepted |
+| 0015 | One design workspace with an SVG icon set | Accepted |
 
 ## ADR-0001: 100% Rust, no C/C++ in the build
 
@@ -176,3 +177,13 @@ Removing them would mean dropping Wayland or X11 support. cargo-deny ignores RUS
 Two dependencies outside the starting set are accepted: `tracing-subscriber`, the standard companion to `tracing`, which routes events to stderr and the in-app log panel; and `wasm-bindgen-futures`, which starts the async web runner and is already in the graph through wgpu. The web platform layer uses eframe's re-export of `web-sys` rather than depending on it directly.
 
 **Consequences.** The guard and cargo-deny stay strict for everything else. Each exception is reviewed when the dependency that brings it in is upgraded: the advisory ignores go once accesskit moves to zbus 6, and the guard warns when an allow-list entry is no longer needed. Content hashing for the object store will need the same review: `blake3` keeps `cc` as a build dependency even with its `pure` feature, which disables the C and assembly code.
+
+## ADR-0015: One design workspace with an SVG icon set
+
+Status: Accepted (2026-10-26)
+
+**Context.** The first layout had workspace tabs (SOLID, SKETCH, INSPECT, SCRIPTS) and text buttons. Sketching, measuring and section views are part of everyday modeling, so putting them in separate tabs forced needless mode switches. Text-only buttons are slow to scan and look unlike the CAD tools users know.
+
+**Decision.** Bevel has a single design workspace. The toolbar groups tools as CREATE, MODIFY, CONSTRUCT, INSPECT, INSERT and UTILITIES; sketch tools replace the toolbar's contents only while a sketch is open. Tools are shown as icons from a project-owned SVG set in `assets/icons/`, rendered with egui_extras' `svg` feature (resvg, usvg and tiny-skia: pure Rust, MIT/Apache, accepted by the pure-Rust guard and cargo-deny). Icons are drawn for Bevel rather than taken from another product's set.
+
+**Consequences.** New tools need an icon in the same style (32×32, isometric blue bodies, orange for the affected part). SVGs are rasterized at run time, which costs a little start-up time and keeps icons sharp at any scale. Workspace tabs can return later for genuinely different environments (assemblies, drawings) without changing how part modeling is organized.
