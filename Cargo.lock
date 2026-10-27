@@ -475,6 +475,10 @@ name = "bevel-expr"
 version = "0.1.0"
 dependencies = [
  "bevel-math",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
