@@ -93,6 +93,63 @@ Slotmap iteration visits slots in index order, and bodies are only ever built by
 
 Bodies serialize in a flat, index-based form (vertices, edges and faces in construction order, referring to each other by position; loops and coedges nested in their faces; shells in body order) and deserialize by rebuilding through `BodyBuilder` and validating, so a corrupt file is refused with the validator's issues instead of producing an invalid body. Every geometry type deserializes through its constructor as well (a zero radius, a skewed frame or a decreasing knot vector is refused). Two bodies are equal when their flat forms are, so a body equals its round trip. JSON round trips are exact only with `serde_json`'s `float_roundtrip` feature, which the kernel's tests enable and the document format will need too.
 
+## Tessellation and mass properties
+
+The code is in `crates/bevel-kernel/src/tessellate/` (`mod.rs` for the API and the mesh, `edge.rs` for edge discretization, `face.rs` for the per-face triangulation) and `crates/bevel-kernel/src/mass.rs`.
+
+### Tessellation
+
+`tessellate(&body, &options, &cx)` returns a `BodyMesh`: one `FaceMesh` per face (positions, unit outward normals, triangles counter-clockwise seen from outside, tagged with the `FaceKey`) and one `EdgePolyline` per non-degenerate edge (tagged with the `EdgeKey`), both in construction order. `TessellationOptions` holds `chordal` (the largest distance between mesh and surface, mm), `angular` (the largest change of normal or tangent across one triangle or segment, rad) and an optional `max_edge`. The presets scale with the diagonal `d` of the body's bounding box:
+
+| Preset | `chordal` | `angular` | `max_edge` | Use |
+|---|---|---|---|---|
+| `coarse` | `2e-3 d` | 0.5 rad | none | while dragging |
+| `fine` | `5e-4 d` | 0.2 rad | none | display at rest |
+| `export` | `1e-4 d` | 0.1 rad | none | STL, 3MF and similar |
+
+The method:
+
+1. **Edges, once.** Each edge is cut by its own parameter. The range starts as one span for a line and four otherwise; a span passes if the curve at its quarter points stays within `chordal` of the chord, the tangent turns by at most `angular` and the chord is no longer than `max_edge`; otherwise it is cut into `n` equal spans with `n` estimated from the worst ratio (the square root of the deviation ratio, times a margin of 1.15 because a circular sagitta shrinks a little slower than the square of the angle), and each is checked again. The end points are the vertices' points exactly. Both faces of an edge, and both sides of a seam, reuse these parameters and these 3D points, so the mesh of a closed shell is watertight by construction: welding positions by their bits, every mesh edge is used by exactly two triangles in opposite directions.
+2. **Degenerate edges.** A pole or apex has no length, but its pcurve runs along a side of the `(u, v)` domain. It gets as many equal spans as the isocurve in the same direction through the centre of the face's `(u, v)` box needs (the equator of a sphere, the middle circle of a cone), and every point is the vertex. No polyline is output for it.
+3. **Faces in `(u, v)`.** Each loop becomes a polygon in `(u, v)` through the pcurves at the shared edge parameters (pcurves share the edge parameter); the segments are constraints of a constrained Delaunay triangulation built with `spade`. Only its non-panicking calls are used, with inputs checked first: every coordinate is checked to be finite before `insert` or `locate`, constraints go through `try_add_constraint`, and a boundary that crosses or touches itself in `(u, v)` is an error. The triangles inside the face are found by a 0-1 breadth-first search from the outer face counting the constraints crossed (odd means inside).
+4. **Scaling.** The triangulation is Delaunay in `(s_u u, s_v v)`, with `s_w` the average over an 8 x 8 grid of `|S_w| max(k_w / angular, sqrt(k_w / (8 chordal)), 1 / size)`: the number of points per unit parameter that the curvature `k_w = |S_ww . n| / |S_w|^2` along `w` needs for each tolerance, and one per face size where the surface is flat. Scaling by `|S_u|` and `|S_v|` alone makes slivers on a thin torus, whose tube turns 50 times faster than its ring, and needs about 25 times more points.
+5. **Refinement.** Passes repeat until no triangle needs refining. A triangle needs it if it is folded (its 3D normal opposes `S_u x S_v` at its `(u, v)` centroid or at its centroid's foot point), if its deviation exceeds `chordal` at the centroid or at the midpoint of an interior edge, if the exact normals at its corners and centroid differ by more than `angular` (corners where the surface has no normal are left out), or if an edge is longer than `max_edge`. The deviation is the distance from the flat triangle's point to `S(u, v)` after two Gauss-Newton steps towards the foot point. Any surface point bounds the distance from above, and the steps remove the parametric part of the offset, which would otherwise make an ideal fan at a cone's apex look far off. The new point is the midpoint of the longest scaled edge if that edge is interior, else the centroid. Points that land on a vertex, on a constraint or outside the face are skipped; boundary edges are never split.
+6. **Mesh.** Interior positions are `S(u, v)`, boundary positions the shared edge points, normals the exact unit normals negated on reversed faces. Triangles with two corners at the same 3D point (at a pole or an apex) are dropped, and unused points removed.
+
+Poles and apexes: the sphere provides a normal at its poles, which is used. Where the surface has none (a cone's apex), each mesh vertex there takes the normal at a point a millionth of the way from it towards the average `(u, v)` centroid of its triangles, the limit along its own ruling, so a cone's tip shades smoothly; if that fails too, the normalized area-weighted average of its triangles' normals.
+
+Every edge and face may use at most `MAX_POINTS` (2^20) points, and needing more is `KernelError::PointLimit`, never a silently coarser mesh. The output is deterministic: entities are visited in construction order, the triangulation sees the same insertions in the same order, and nothing iterates a hash map.
+
+Triangle counts for 50 mm bodies at the origin:
+
+| Body | coarse | fine | export |
+|---|---|---|---|
+| box 50 | 12 | 12 | 12 |
+| cylinder r 25, h 50 | 124 | 236 | 540 |
+| sphere r 25 | 1754 | 7188 | 34214 |
+| frustum r 25 / 12.5, h 50 | 108 | 204 | 460 |
+| cone r 25, h 50 (apex) | 62 | 118 | 270 |
+| torus R 17.5, r 7.5 | 2146 | 9088 | 52678 |
+
+The property tests (`tests/tessellation_props.rs`) tessellate every primitive with random sizes from 1 um to 20 m under random rigid frames at each preset and check watertightness, positive areas, points on their surfaces and curves to 1e-9 of the body size, triangle centroids within `chordal`, orientation, vertex normals within `angular`, monotone triangle counts, `|V_mesh - V| <= 2 chordal area` and bit-for-bit determinism.
+
+### Mass properties
+
+`mass_properties(&body, &cx)` returns a solid's `MassProperties`: volume, area, centroid, the inertia tensor about the centroid at unit density, and the principal moments (increasing) and axes (the columns of a rotation). A sheet body is refused (`KernelError::InvalidInput`), since it encloses no volume.
+
+By the divergence theorem, with `x = S(u, v) - c` for a reference point `c` and `N = +-(S_u x S_v)` (negated on reversed faces):
+
+```text
+V    = 1/3 sum over faces int (x . N) du dv              F = x / 3
+A    = sum over faces int |S_u x S_v| du dv
+M_i  = 1/4 sum over faces int x_i (x . N) du dv          F = x_i x / 4
+P_ij = 1/5 sum over faces int x_i x_j (x . N) du dv      F = x_i x_j x / 5
+```
+
+with `c` the centre of the bounding box for `V` and `M`, the centroid `g = c + M / V`, then `c = g` for the second moments `P`, and `I = trace(P) E - P`. The fields are radial rather than axis-aligned (`x_i^2 / 2 e_i`): every integrand is then a multiple of `x . N`, the result does not depend on the orientation of the axes, and a face that misses its neighbour by a hair leaks flux only in proportion to `x . n`. A very flat cone, whose rim sits about 1e-8 mm off its cap because the cone stores its half-angle, showed a centroid error of 2e-4 mm with the axis-aligned fields and is exact with the radial ones.
+
+Each face's trimmed `(u, v)` domain is triangulated as for tessellation (angular 0.3 rad, no chordal or length limit) and each triangle integrated with an 8 x 8 Gauss-Legendre product rule on the collapsed square `a + s (b - a) + (1 - s) t (c - a)`, of the exact integrands. Triangles that collapse at a pole are kept here, since their `(u, v)` area carries real surface. Where a pcurve is not a line (the circle around a planar cap), the sliver between each chord and its arc, `Q(tau, sigma) = L(tau) + sigma (C(t(tau)) - L(tau))`, is added with the same rule and the sign of the loop's orientation, so curved trims are exact too. Principal axes come from cyclic Jacobi rotations on the symmetric tensor. The property tests (`tests/mass_props.rs`) match the closed-form volume, area, centroid, tensor and principal moments of all five primitives (frustum and apex cone included) under random frames to 1e-9; the closed forms are derived in `tests/common/mod.rs`.
+
 ## Operations
 
 Kernel operations share one signature shape:
