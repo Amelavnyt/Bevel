@@ -28,7 +28,7 @@ bevel-script = { path = "crates/bevel-script" }
 bevel-ui = { path = "crates/bevel-ui" }
 
 # Math and geometry
-glam = "0.34.1"
+glam = { version = "0.34.1", features = ["serde"] }
 nalgebra = "0.35.0"
 robust = "1.2.0"
 spade = "2.15.1"
