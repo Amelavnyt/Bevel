@@ -180,6 +180,8 @@ Two dependencies outside the starting set are accepted: `tracing-subscriber`, th
 
 **Consequences.** The guard and cargo-deny stay strict for everything else. Each exception is reviewed when the dependency that brings it in is upgraded: the advisory ignores go once accesskit moves to zbus 6, and the guard warns when an allow-list entry is no longer needed. Content hashing for the object store will need the same review: `blake3` keeps `cc` as a build dependency even with its `pure` feature, which disables the C and assembly code.
 
+*Amended 2026-10-27 (Phase 3):* the file picker and the rebuild worker (ADR-0019) need further `web-sys` features in `bevel-app` on wasm32: `DedicatedWorkerGlobalScope`, `File`, `FileList`, `HtmlInputElement`, `Location`, `MessageEvent` and `Worker`.
+
 *Amended 2026-10-27:* `blake3 cc` joins the allow-list for content hashing in the timeline and the object store. With the `pure` feature nothing but Rust is compiled or linked. On x86 the build script still asks an installed C compiler, if any, whether it supports AVX-512 flags; under `pure` the answer is ignored, and the build succeeds on machines without a C compiler. A pure-Rust SHA-256 would avoid the entry, but BLAKE3 is the hash the object-store design (ADR-0007) names, and it is several times faster for large body blobs.
 
 ## ADR-0015: One design workspace with an SVG icon set
@@ -221,3 +223,13 @@ Status: Accepted (2026-10-27)
 **Decision.** There is no permanent properties panel. A tool that needs input or shows results opens a compact floating dialog over the viewport: a header with the tool's icon, its name in capitals and a close button, then its content. The Measure tool is the first; it shows results for the current selection with a copy button per value and a precision setting. Feature dialogs from Phase 4 on follow the same pattern.
 
 **Consequences.** The viewport gets the full width between the browser and the window edge. Mass properties that are not part of Measure (the inertia tensor and principal moments) wait for the Mass Properties tool. Dialogs can be dragged, so they never hide what the user is working on for long; their positions are not yet remembered between sessions.
+
+## ADR-0019: Rebuilds off the UI thread on the desktop and in the browser
+
+Status: Accepted (2026-10-27)
+
+**Context.** Every edit regenerates the part and tessellates its bodies. Booleans, blends and large patterns will make that take longer than a frame, and the UI must stay responsive while it runs, also in the browser, where wasm threads need cross-origin isolation headers that static hosts such as GitHub Pages cannot set.
+
+**Decision.** The app never regenerates on the UI thread. `bevel-app/src/platform/` provides a `Rebuilder` with the same interface on both platforms: the app requests a rebuild of a part with a generation number and polls for the newest result. On the desktop a background thread keeps a `Regenerator` (and its cache) and, when a newer request arrives, cancels the running one through the kernel's cancellation token. In the browser a dedicated Web Worker runs a second binary, `bevel-worker`, built by Trunk next to the page; it keeps its own `Regenerator`, and requests that queue up while it is busy collapse into the newest. Messages are JSON: the request carries the part as a `.bevel` file, the reply carries each body as kernel JSON with its mesh and mass, where mesh faces and edges refer to their B-rep entities by position in the body's lists (slotmap keys do not survive serialization, positions do). If the worker cannot start, the page rebuilds on its own thread.
+
+**Consequences.** Editing stays smooth however long a rebuild takes, and the same code path is tested on both platforms (a unit test round-trips a rebuild through the message format and checks that every mesh face and edge still belongs to the same named entity). The browser pays for serializing bodies and validating them again on arrival; if that shows up in profiles, a compact binary encoding can replace JSON without changing the interface. Requests in the browser cannot be cancelled mid-operation, only superseded. The worker binary also runs on the desktop, reading a request from stdin and writing the reply to stdout, which helps when debugging messages.

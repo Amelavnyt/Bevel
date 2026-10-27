@@ -34,6 +34,17 @@ trunk serve --config web/Trunk.toml --open
 
 Open <http://localhost:8080>. A browser with WebGPU or WebGL2 is required. `trunk build --release --config web/Trunk.toml` writes a static site to `dist/`.
 
+## Modeling
+
+Bevel is history-based: every feature you create is a step on the timeline at the bottom of the window.
+
+- **Create a primitive**: click Box in the CREATE group (Cylinder, Sphere, Cone and Torus are in the CREATE menu). A dialog shows its dimensions and placement with a live preview; every field takes an expression such as `40 mm`, `width * 2` or `1.5 in`, and a bare number uses the document's unit. OK adds the feature.
+- **Edit**: double-click a feature on the timeline, or right-click it for Edit, Rename, Suppress, Roll marker here and Delete.
+- **Timeline**: drag a feature to reorder it, or drag the teal marker to roll the model back to any point; the playback buttons step the marker.
+- **Parameters**: Edit > Change Parameters (or Change Parameters in the MODIFY menu) lists every dimension (`d1`, `d2`, ... ) and lets you add your own named parameters and use them in any field.
+- **Undo and redo**: Ctrl+Z and Ctrl+Shift+Z (or Ctrl+Y).
+- **Files**: File > New, Open, Save and Save As (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S) work with `.bevel` files; in the browser, Open uses the file picker and Save downloads the file. Help > Open Sample loads a document with one of each primitive.
+
 ## Using the viewport
 
 | Action | Mouse |
