@@ -16,7 +16,17 @@ pub struct Interval {
 
 impl Interval {
     /// The interval between `a` and `b`, in either order.
+    ///
+    /// If either end is NaN, both ends are NaN: `f64::min` and `f64::max`
+    /// ignore NaN, which would otherwise turn a bad input into a valid
+    /// looking zero-length interval.
     pub fn new(a: f64, b: f64) -> Self {
+        if a.is_nan() || b.is_nan() {
+            return Self {
+                min: f64::NAN,
+                max: f64::NAN,
+            };
+        }
         Self {
             min: a.min(b),
             max: a.max(b),
@@ -97,6 +107,15 @@ impl Interval {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn nan_end_is_not_swallowed() {
+        for (a, b) in [(0.0, f64::NAN), (f64::NAN, 1.0)] {
+            let i = Interval::new(a, b);
+            assert!(i.min.is_nan() && i.max.is_nan());
+            assert!(i.length().is_nan());
+        }
+    }
     use super::*;
 
     #[test]
