@@ -95,5 +95,5 @@ fn vs_main(@builtin(vertex_index) index: u32, segment: Instance) -> VertexOut {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    return to_srgb(in.color);
+    return to_srgb(vec4<f32>(tint_edge(in.color.rgb, highlight_state(in.id)), in.color.a));
 }

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::pack::{self, LINE_INSTANCE_WORDS};
+use crate::pack::{self, HIGHLIGHT_WORDS, LINE_INSTANCE_WORDS, MAX_SELECTED, globals};
 use crate::pipelines::{DEPTH_FORMAT, OUTPUT_FORMAT, Pipelines};
 use crate::{Camera, LineSet, Projection, TriangleMesh};
 use bevel_math::{Aabb3, Point3};
 use wgpu::util::DeviceExt as _;
 
-/// Number of `f32`s in the `Globals` uniform block (see shaders/globals.wgsl).
-const GLOBALS_FLOATS: usize = 16 + 16 + 4 * 10;
 /// Largest render target edge we ask for; larger viewports are clamped.
 const MAX_TARGET_SIZE: u32 = 8192;
 /// Vertices drawn per line segment instance: two triangles.
@@ -32,6 +30,15 @@ pub struct ViewportTheme {
     pub axis_y: [u8; 4],
     /// Z axis.
     pub axis_z: [u8; 4],
+    /// Tint of hovered faces and edges (the light signature teal). Faces mix
+    /// it in at about 45%, edges take it at full strength.
+    pub hover: [u8; 4],
+    /// Tint of selected faces and edges (the signature teal). Faces mix it in
+    /// at about 60%.
+    pub selected: [u8; 4],
+    /// Tint of faces and edges that are both selected and hovered, slightly
+    /// brighter than [`ViewportTheme::selected`].
+    pub selected_hover: [u8; 4],
 }
 
 impl ViewportTheme {
@@ -44,6 +51,10 @@ impl ViewportTheme {
         axis_x: [214, 72, 72, 230],
         axis_y: [92, 186, 92, 230],
         axis_z: [80, 128, 232, 255],
+        // #58AAA5, #2D8985 and a step brighter than the latter.
+        hover: [88, 170, 165, 255],
+        selected: [45, 137, 133, 255],
+        selected_hover: [62, 158, 153, 255],
     };
 }
 
@@ -127,6 +138,8 @@ pub struct ViewportRenderer {
     sample_count: u32,
     theme: ViewportTheme,
     overlays: ViewportOverlays,
+    /// Hovered and selected ids, packed for the globals uniform.
+    highlight: [u32; HIGHLIGHT_WORDS],
     globals: wgpu::Buffer,
     globals_bind_group: wgpu::BindGroup,
     pipelines: Pipelines,
@@ -161,7 +174,7 @@ impl ViewportRenderer {
 
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("viewport globals"),
-            size: (GLOBALS_FLOATS * 4) as u64,
+            size: (globals::WORDS * 4) as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -205,6 +218,7 @@ impl ViewportRenderer {
             sample_count,
             theme: ViewportTheme::DARK,
             overlays: ViewportOverlays::default(),
+            highlight: [0; HIGHLIGHT_WORDS],
             globals,
             globals_bind_group,
             pipelines,
@@ -224,6 +238,23 @@ impl ViewportRenderer {
     /// Chooses which helpers (grid, axes) are drawn.
     pub fn set_overlays(&mut self, overlays: ViewportOverlays) {
         self.overlays = overlays;
+    }
+
+    /// Sets which faces and edges are drawn highlighted: the one under the
+    /// cursor (`hovered`) and the `selected` ones, by id.
+    ///
+    /// At most 64 selected ids are used; extra ids are ignored with a
+    /// warning. Id 0 ("not pickable") is never highlighted. The state stays
+    /// until the next call and survives [`ViewportRenderer::set_scene`].
+    pub fn set_highlight(&mut self, hovered: Option<u32>, selected: &[u32]) {
+        let (words, ignored) = pack::pack_highlight(hovered, selected);
+        if ignored > 0 {
+            tracing::warn!(
+                ignored,
+                "more than {MAX_SELECTED} selected ids; ignoring the extra ones"
+            );
+        }
+        self.highlight = words;
     }
 
     /// Bounding box of everything set with [`ViewportRenderer::set_scene`].
@@ -321,7 +352,7 @@ impl ViewportRenderer {
         queue.write_buffer(
             &self.globals,
             0,
-            &pack::floats_to_bytes(&self.globals_data(camera, size, &grid)),
+            &pack::words_to_bytes(&self.globals_data(camera, size, &grid)),
         );
         let axis_z = linear(self.theme.axis_z);
         let z_top = grid.fade_radius as f32 * 0.5;
@@ -452,7 +483,7 @@ impl ViewportRenderer {
         camera: &Camera,
         size: [u32; 2],
         grid: &GridLayout,
-    ) -> [f32; GLOBALS_FLOATS] {
+    ) -> [u32; globals::WORDS] {
         let aspect = f64::from(size[0]) / f64::from(size[1]);
         let eye = camera.eye().as_vec3();
         let orthographic = if camera.projection == Projection::Orthographic {
@@ -460,8 +491,7 @@ impl ViewportRenderer {
         } else {
             0.0
         };
-        let mut data = [0.0f32; GLOBALS_FLOATS];
-        let vectors: [[f32; 4]; 10] = [
+        let vectors: [[f32; 4]; globals::VECTOR_COUNT] = [
             [eye.x, eye.y, eye.z, 1.0],
             [
                 grid.minor as f32,
@@ -478,11 +508,30 @@ impl ViewportRenderer {
             shown(linear(self.theme.axis_x), self.overlays.axes),
             shown(linear(self.theme.axis_y), self.overlays.axes),
         ];
-        data[..16].copy_from_slice(&camera.view_projection(aspect).as_mat4().to_cols_array());
-        data[16..32].copy_from_slice(&camera.view().as_mat4().to_cols_array());
-        for (chunk, v) in data[32..].chunks_exact_mut(4).zip(vectors) {
-            chunk.copy_from_slice(&v);
+        let highlight_colors = [
+            linear(self.theme.hover),
+            linear(self.theme.selected),
+            linear(self.theme.selected_hover),
+        ];
+
+        let mut data = [0u32; globals::WORDS];
+        let mut put = |at: usize, values: &[f32]| {
+            for (word, value) in data[at..].iter_mut().zip(values) {
+                *word = value.to_bits();
+            }
+        };
+        put(
+            globals::VIEW_PROJ,
+            &camera.view_projection(aspect).as_mat4().to_cols_array(),
+        );
+        put(globals::VIEW, &camera.view().as_mat4().to_cols_array());
+        for (i, v) in vectors.iter().enumerate() {
+            put(globals::VECTORS + 4 * i, v);
         }
+        for (i, v) in highlight_colors.iter().enumerate() {
+            put(globals::HIGHLIGHT_COLORS + 4 * i, v);
+        }
+        data[globals::HIGHLIGHT..].copy_from_slice(&self.highlight);
         data
     }
 }

@@ -34,6 +34,57 @@ pub(crate) const LINE_INSTANCE_FORMATS: [wgpu::VertexFormat; 5] = [
 /// Words in a packed line segment instance.
 pub(crate) const LINE_INSTANCE_WORDS: usize = 3 + 3 + 4 + 1 + 1;
 
+/// The most selected ids the shaders can highlight at once.
+pub(crate) const MAX_SELECTED: usize = 64;
+/// Words in the packed highlight state: a `vec4<u32>` holding the hovered id
+/// in its first word, then the selected ids padded with zeros as
+/// `array<vec4<u32>, 16>`. See `highlight` and `selected_ids` in
+/// shaders/globals.wgsl.
+pub(crate) const HIGHLIGHT_WORDS: usize = 4 + MAX_SELECTED;
+
+/// Word offsets of the fields of `Globals` (shaders/globals.wgsl). Every
+/// field is 16-byte aligned, so each offset is the sum of the sizes before it.
+pub(crate) mod globals {
+    /// `view_proj: mat4x4<f32>`.
+    pub(crate) const VIEW_PROJ: usize = 0;
+    /// `view: mat4x4<f32>`.
+    pub(crate) const VIEW: usize = 16;
+    /// The first of the ten `vec4<f32>` fields from `eye` to `axis_y`.
+    pub(crate) const VECTORS: usize = 32;
+    /// Number of `vec4<f32>` fields from `eye` to `axis_y`.
+    pub(crate) const VECTOR_COUNT: usize = 10;
+    /// The three highlight colours: `hover`, `selected`, `selected_hover`.
+    pub(crate) const HIGHLIGHT_COLORS: usize = VECTORS + 4 * VECTOR_COUNT;
+    /// `highlight: vec4<u32>` followed by `selected_ids: array<vec4<u32>, 16>`.
+    pub(crate) const HIGHLIGHT: usize = HIGHLIGHT_COLORS + 3 * 4;
+    /// Size of the whole block in words.
+    pub(crate) const WORDS: usize = HIGHLIGHT + super::HIGHLIGHT_WORDS;
+}
+
+/// The highlight state as uniform words, and how many selected ids did not
+/// fit and were dropped.
+///
+/// Ids of 0 ("not pickable") are skipped. Beyond [`MAX_SELECTED`] ids the
+/// rest are ignored.
+pub(crate) fn pack_highlight(
+    hovered: Option<u32>,
+    selected: &[u32],
+) -> ([u32; HIGHLIGHT_WORDS], usize) {
+    let mut words = [0; HIGHLIGHT_WORDS];
+    words[0] = hovered.unwrap_or(0);
+    let mut count = 0;
+    let mut ignored = 0;
+    for &id in selected.iter().filter(|&&id| id != 0) {
+        if count < MAX_SELECTED {
+            words[4 + count] = id;
+            count += 1;
+        } else {
+            ignored += 1;
+        }
+    }
+    (words, ignored)
+}
+
 /// Bytes between consecutive elements of a buffer with the given attributes.
 pub(crate) fn stride_of(formats: &[wgpu::VertexFormat]) -> u64 {
     formats.iter().map(wgpu::VertexFormat::size).sum()
@@ -42,11 +93,6 @@ pub(crate) fn stride_of(formats: &[wgpu::VertexFormat]) -> u64 {
 /// Little-endian bytes of the words.
 pub(crate) fn words_to_bytes(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|w| w.to_le_bytes()).collect()
-}
-
-/// Little-endian bytes of the floats.
-pub(crate) fn floats_to_bytes(values: &[f32]) -> Vec<u8> {
-    values.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
 
 fn push_floats(words: &mut Vec<u32>, values: &[f32]) {
@@ -183,6 +229,87 @@ mod tests {
         }
         // Start 0, end 12, colour 24, id 40, width 44.
         assert_eq!(offsets, [0, 12, 24, 40, 44]);
+    }
+
+    /// Size in words of a WGSL type used in `Globals`.
+    fn words_of(wgsl_type: &str) -> usize {
+        match wgsl_type {
+            "mat4x4<f32>" => 16,
+            "vec4<f32>" | "vec4<u32>" => 4,
+            "array<vec4<u32>, 16>" => 4 * 16,
+            other => panic!("unexpected uniform type {other}"),
+        }
+    }
+
+    #[test]
+    fn globals_offsets_match_the_shader() {
+        let source = include_str!("shaders/globals.wgsl");
+        let body = source
+            .split_once("struct Globals {")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map_or_else(|| panic!("Globals not found"), |(body, _)| body);
+        let mut offsets = Vec::new();
+        let mut at = 0;
+        for line in body.lines() {
+            let line = line.trim();
+            if line.starts_with("//") {
+                continue;
+            }
+            let Some((name, ty)) = line.trim_end_matches(',').split_once(':') else {
+                continue;
+            };
+            offsets.push((name.trim().to_owned(), at));
+            at += words_of(ty.trim());
+        }
+        let offset = |name: &str| {
+            offsets
+                .iter()
+                .find(|(n, _)| n == name)
+                .map_or_else(|| panic!("no field {name}"), |&(_, o)| o)
+        };
+        assert_eq!(offset("view_proj"), globals::VIEW_PROJ);
+        assert_eq!(offset("view"), globals::VIEW);
+        assert_eq!(offset("eye"), globals::VECTORS);
+        assert_eq!(
+            offset("axis_y"),
+            globals::VECTORS + 4 * (globals::VECTOR_COUNT - 1)
+        );
+        assert_eq!(offset("hover"), globals::HIGHLIGHT_COLORS);
+        assert_eq!(offset("selected"), globals::HIGHLIGHT_COLORS + 4);
+        assert_eq!(offset("selected_hover"), globals::HIGHLIGHT_COLORS + 8);
+        assert_eq!(offset("highlight"), globals::HIGHLIGHT);
+        assert_eq!(offset("selected_ids"), globals::HIGHLIGHT + 4);
+        assert_eq!(at, globals::WORDS);
+        // Uniform buffers are sized in multiples of 16 bytes.
+        assert_eq!(globals::WORDS % 4, 0);
+    }
+
+    #[test]
+    fn highlight_packs_hovered_then_selected_ids() {
+        let (words, ignored) = pack_highlight(Some(9), &[3, 0, 5]);
+        assert_eq!(ignored, 0);
+        assert_eq!(words[0], 9);
+        assert_eq!(&words[1..4], &[0, 0, 0]);
+        assert_eq!(&words[4..7], &[3, 5, 0]);
+        assert!(words[7..].iter().all(|&w| w == 0));
+        let (words, _) = pack_highlight(None, &[]);
+        assert!(words.iter().all(|&w| w == 0));
+    }
+
+    #[test]
+    fn highlight_holds_sixty_four_ids_and_ignores_the_rest() {
+        let ids: Vec<u32> = (1..=70).collect();
+        let (words, ignored) = pack_highlight(None, &ids);
+        assert_eq!(ignored, 6);
+        assert_eq!(words.len(), 4 + 64);
+        assert_eq!(words[4], 1);
+        assert_eq!(words[4 + 63], 64);
+        // The 64 ids fill the sixteen vec4<u32> elements exactly.
+        assert_eq!(words[4..].len(), 16 * 4);
+        // Zero ids do not use up slots.
+        let mut with_zeros = vec![0; 10];
+        with_zeros.extend(1..=64);
+        assert_eq!(pack_highlight(None, &with_zeros).1, 0);
     }
 
     #[test]

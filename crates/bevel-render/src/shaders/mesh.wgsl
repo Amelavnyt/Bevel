@@ -39,5 +39,6 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) ve
     let diffuse = 0.62 * max(dot(n, key), 0.0) + 0.18 * max(dot(n, fill), 0.0) + 0.24;
     let half_vector = normalize(key + vec3<f32>(0.0, 0.0, 1.0));
     let specular = 0.18 * pow(max(dot(n, half_vector), 0.0), 48.0);
-    return to_srgb(vec4<f32>(in.color.rgb * diffuse + vec3<f32>(specular), in.color.a));
+    let shaded = in.color.rgb * diffuse + vec3<f32>(specular);
+    return to_srgb(vec4<f32>(tint_face(shaded, highlight_state(in.id)), in.color.a));
 }
