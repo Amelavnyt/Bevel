@@ -52,6 +52,55 @@ pub enum UiAction {
     SetProjection(Projection),
     /// Quit the application (desktop only).
     Quit,
+    /// Export the visible bodies to a file.
+    Export(ExportFormat),
+    /// Select a body (by its index in [`UiState::bodies`]).
+    SelectBody(usize),
+}
+
+/// A mesh file format for export.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportFormat {
+    /// Binary STL.
+    Stl,
+    /// 3MF (3D Manufacturing Format).
+    ThreeMf,
+}
+
+impl ExportFormat {
+    /// File extension, without the dot.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Stl => "stl",
+            Self::ThreeMf => "3mf",
+        }
+    }
+
+    /// Name for menus and file dialogs.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Stl => "STL",
+            Self::ThreeMf => "3MF",
+        }
+    }
+}
+
+/// A body as the browser shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BodyEntry {
+    /// Display name.
+    pub name: String,
+    /// Whether it is drawn and exported.
+    pub visible: bool,
+}
+
+/// What the properties panel shows for the current selection.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SelectionInfo {
+    /// Heading, e.g. the body or face name.
+    pub title: String,
+    /// Label and value rows, already formatted with units.
+    pub rows: Vec<(String, String)>,
 }
 
 /// A short message shown over the viewport.
@@ -93,6 +142,10 @@ pub struct UiState {
     pub can_quit: bool,
     /// Message shown over the viewport, if any.
     pub notice: Option<Notice>,
+    /// The part's bodies, in browser order; the app keeps this in sync.
+    pub bodies: Vec<BodyEntry>,
+    /// What is selected, for the properties panel; `None` when nothing is.
+    pub selection: Option<SelectionInfo>,
     /// Current time, for timing notices; updated every frame.
     now: f64,
 }
@@ -111,6 +164,8 @@ impl Default for UiState {
             branch: "main".to_owned(),
             can_quit: true,
             notice: None,
+            bodies: Vec::new(),
+            selection: None,
             now: 0.0,
         }
     }
@@ -185,13 +240,14 @@ pub fn workbench(
         .frame(side_frame)
         .resizable(true)
         .default_size(230.0)
-        .show(ui, |ui| browser::show(ui, state));
+        .show(ui, |ui| browser::show(ui, state, &mut actions));
     if state.show_properties {
         egui::Panel::right("properties")
             .frame(side_frame)
             .resizable(true)
-            .default_size(260.0)
-            .show(ui, properties::show);
+            .default_size(300.0)
+            .size_range(260.0..=440.0)
+            .show(ui, |ui| properties::show(ui, state.selection.as_ref()));
     }
     egui::CentralPanel::no_frame().show(ui, |ui| viewport(ui, state, &mut actions));
 
@@ -310,5 +366,53 @@ mod tests {
         let notice = state.notice.expect("clicking a tool shows a notice");
         assert!(notice.text.contains("Extrude"));
         assert!(notice.text.contains("Phase 6"));
+    }
+
+    fn with_bodies() -> UiState {
+        UiState {
+            bodies: vec![
+                BodyEntry {
+                    name: "Box".to_owned(),
+                    visible: true,
+                },
+                BodyEntry {
+                    name: "Torus".to_owned(),
+                    visible: false,
+                },
+            ],
+            ..UiState::default()
+        }
+    }
+
+    #[test]
+    fn clicking_a_body_selects_it() {
+        let mut state = with_bodies();
+        let mut actions = Vec::new();
+        {
+            let log = LogBuffer::default();
+            let mut harness = Harness::builder()
+                .with_size(egui::vec2(1400.0, 900.0))
+                .build_ui(|ui| {
+                    install(ui.ctx());
+                    actions.extend(workbench(ui, &mut state, &log, |_, _, _| {}));
+                });
+            harness.run();
+            harness.get_by_label("Torus").click();
+            harness.run();
+        }
+        assert!(actions.contains(&UiAction::SelectBody(1)));
+    }
+
+    #[test]
+    fn properties_show_the_selection() {
+        let mut state = with_bodies();
+        state.selection = Some(SelectionInfo {
+            title: "Box".to_owned(),
+            rows: vec![("Volume".to_owned(), "8000 mm³".to_owned())],
+        });
+        let harness = harness(&mut state);
+        harness.get_by_label("Volume");
+        harness.get_by_label("8000 mm³");
+        assert!(harness.query_by_label("Nothing selected").is_none());
     }
 }

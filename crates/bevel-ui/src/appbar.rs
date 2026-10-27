@@ -4,7 +4,7 @@
 //! the branch selector.
 
 use crate::icons::Icon;
-use crate::{UiAction, UiState, theme, widgets};
+use crate::{ExportFormat, UiAction, UiState, theme, widgets};
 use bevel_render::{Projection, StandardView};
 
 const DOCUMENTS_PHASE: &str = "Phase 3: Document & timeline";
@@ -82,8 +82,18 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>) {
                 .on_disabled_hover_text(format!("Arrives in {DOCUMENTS_PHASE}"));
         }
         ui.separator();
-        ui.add_enabled(false, egui::Button::new("Export…"))
-            .on_disabled_hover_text("STL and 3MF export arrive in Phase 2");
+        let has_bodies = state.bodies.iter().any(|b| b.visible);
+        ui.add_enabled_ui(has_bodies, |ui| {
+            ui.menu_button("Export", |ui| {
+                for format in [ExportFormat::Stl, ExportFormat::ThreeMf] {
+                    if ui.button(format!("{}…", format.label())).clicked() {
+                        actions.push(UiAction::Export(format));
+                    }
+                }
+            })
+            .response
+            .on_disabled_hover_text("No visible bodies to export");
+        });
         if state.can_quit {
             ui.separator();
             if ui.button("Quit").clicked() {

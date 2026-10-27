@@ -24,6 +24,14 @@ pub struct ViewportArea {
     pub rect: egui::Rect,
     /// Size of the area in physical pixels, at least 1x1.
     pub size_px: [u32; 2],
+    /// The pixel under the pointer, from the top left of the viewport, when
+    /// the pointer is over the viewport (not over a control floating on it)
+    /// and no navigation drag is in progress.
+    pub hover_px: Option<[u32; 2]>,
+    /// The viewport was clicked with the primary button this frame.
+    pub clicked: bool,
+    /// Shift was held during that click (add to the selection).
+    pub shift: bool,
 }
 
 impl ViewportArea {
@@ -44,10 +52,26 @@ pub fn interact(ui: &mut egui::Ui, camera: &mut Camera) -> ViewportArea {
     )]
     let to_px = |points: f32| (points * pixels_per_point).round().max(1.0) as u32;
     let size_px = [to_px(rect.width()), to_px(rect.height())];
-    let area = ViewportArea { rect, size_px };
     let height_points = f64::from(rect.height().max(1.0));
-
     let shift = ui.input(|i| i.modifiers.shift);
+    let dragging = response.dragged_by(egui::PointerButton::Secondary)
+        || response.dragged_by(egui::PointerButton::Middle);
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "the pointer lies inside the rect, so the offset is non-negative"
+    )]
+    let hover_px = response.hover_pos().filter(|_| !dragging).map(|p| {
+        let offset = (p - rect.min) * pixels_per_point;
+        [offset.x.max(0.0) as u32, offset.y.max(0.0) as u32]
+    });
+    let area = ViewportArea {
+        rect,
+        size_px,
+        hover_px,
+        clicked: response.clicked_by(egui::PointerButton::Primary),
+        shift,
+    };
+
     let delta = response.drag_delta();
     let delta = DVec2::new(f64::from(delta.x), f64::from(delta.y));
     if delta != DVec2::ZERO {
