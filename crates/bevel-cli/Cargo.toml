@@ -17,7 +17,13 @@ workspace = true
 
 [dependencies]
 bevel-doc.workspace = true
+bevel-expr.workspace = true
+bevel-kernel.workspace = true
+bevel-timeline.workspace = true
 bevel-model.workspace = true
 bevel-io.workspace = true
 bevel-script.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+bevel-io.workspace = true

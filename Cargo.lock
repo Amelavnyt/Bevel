@@ -452,9 +452,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bevel-doc",
+ "bevel-expr",
  "bevel-io",
+ "bevel-kernel",
  "bevel-model",
  "bevel-script",
+ "bevel-timeline",
 ]
 
 [[package]]

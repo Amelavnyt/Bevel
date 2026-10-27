@@ -85,6 +85,22 @@ impl DocState {
             .unwrap_or_else(|| kind.to_owned())
     }
 
+    /// Body `id`'s name: its own if set, otherwise its feature's ("Box1"),
+    /// numbered when the feature makes several ("Pattern1 (2)").
+    pub fn body_name(&self, id: BodyId) -> String {
+        if let Some(name) = self.body_props.get(&id).and_then(|p| p.name.clone()) {
+            return name;
+        }
+        let feature = self
+            .feature(id.feature)
+            .map_or_else(|| id.feature.to_string(), |f| f.name.clone());
+        if id.index == 0 {
+            feature
+        } else {
+            format!("{feature} ({})", id.index + 1)
+        }
+    }
+
     /// Body `id`'s display properties.
     pub fn body_props(&self, id: BodyId) -> BodyProps {
         self.body_props.get(&id).cloned().unwrap_or_default()
