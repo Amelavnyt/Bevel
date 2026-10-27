@@ -27,6 +27,72 @@ Rules:
 
 Every curve and surface is exactly representable as rational NURBS, and every algorithm has a correct general-NURBS implementation first. Analytic types (line, circle, ellipse, plane, cylinder, cone, sphere, torus) keep their identity so they can be intersected, measured and exported exactly. Analytic fast paths (plane-plane, plane-quadric, sphere-sphere, coaxial cases) are optional optimizations and each one is cross-checked against the general NURBS path in tests. Helices and offsets are not exactly NURBS: they are approximated within tolerance and the error bound is recorded.
 
+## Topology conventions
+
+Every body in `bevel-kernel` follows these rules, and `validate(&Body)` checks them. The code is in `crates/bevel-kernel/src/topology.rs` (data structure and conventions), `builder.rs`, `validate.rs` and `primitives.rs`.
+
+### Data structure
+
+A `Body` owns one slotmap arena per entity type (vertex, edge, coedge, loop, face, shell) and refers to entities by typed keys (`VertexKey`, `EdgeKey`, ...). Back-references are stored and must agree: a coedge names its loop, a loop its face, a face its shell, and each owner lists what it owns. A body is a list of shells: for a `Solid` every shell is closed, `shells[0]` is the outer boundary and the rest bound voids; a `Sheet` may have open shells (for intermediate results). Bodies are built with `BodyBuilder`, which checks keys and back-references at every step and runs the validator in `finish`, refusing an invalid body with the list of issues. After that a body is immutable and shared as `Arc<Body>`; operations make new bodies.
+
+### Orientation
+
+- An edge runs along its curve's parameter from `range.min` (its `start` vertex) to `range.max` (its `end` vertex); the range is finite with `min < max`, no longer than one period of a periodic curve.
+- A coedge with `reversed == false` travels its edge from `start` to `end`, with `reversed == true` from `end` to `start`.
+- A face's oriented normal is the surface normal (the direction of `S_u x S_v`), negated when `face.reversed` is set. It points out of the material.
+- Loops keep their face on the left: walking along a coedge with the oriented normal pointing up, the face lies to the left. In `(u, v)` this means that the outer loop of a face that is not reversed runs counter-clockwise and its holes clockwise; for a reversed face it is the other way round. `face.loops[0]` is the outer loop. The validator checks the sign of each loop's area in `(u, v)` (skipping loops that jump across a period).
+- In a closed shell every non-degenerate edge has exactly two coedges, one with `reversed == false` and one with `reversed == true`, which is what makes the orientation consistent across the edge.
+
+### Pcurves
+
+A coedge's pcurve lies in its face's `(u, v)` space and shares the edge's parameter: for every `t` in `edge.range`, `surface(pcurve(t))` equals `edge.curve(t)` to within the edge tolerance. A pcurve therefore runs along its edge, not along its coedge (a reversed coedge travels it from `range.max` to `range.min`), and both coedges of an edge use the same parameter. On analytic surfaces pcurves are exact: lines in `(u, v)` (`Line2`, or a degree-1 NURBS where the edge's parameter runs at a different speed, as on a cone's seam, whose arc-length parameter is faster than `v` by `1 / cos(half-angle)`) and circles on planes.
+
+### Seams
+
+A face on a periodic surface (the angle `u` of cylinders, cones, spheres and tori, and `v` of tori) is cut along seam edges so that every loop is a closed curve in `(u, v)` without jumps. A seam is used twice by the same face, once in each direction, with its two pcurves exactly one period apart in exactly one periodic direction: on a cylinder the seam is travelled up along `u = 2 pi` and down along `u = 0`. Any edge whose two coedges lie in one face is a seam, and the validator checks the one-period offset. For data from elsewhere, the validator also accepts a junction between consecutive pcurves that jumps by exactly one period, but the kernel's own faces have gap-free loops: the curved face of every primitive is the full rectangle of its parameter domain.
+
+### Degenerate edges
+
+An edge of zero length (at a sphere's pole or a cone's apex) is marked `degenerate`. It starts and ends at the same vertex, its curve is constant (a degree-1 NURBS with both control points at the vertex), and its range is that of its single pcurve, which runs along the singular side of the parameter domain (`v = +-pi / 2` on a sphere, from `u = 0` to `u = 2 pi`). A degenerate edge has exactly one coedge; a non-degenerate edge must have positive length.
+
+### Euler-Poincare
+
+For each closed shell, `V - E + F - (L - F) = 2 (1 - G)` with `V` the vertices, `E` the non-degenerate edges, `F` the faces, `L` the loops and `G >= 0` the genus. Seams count as ordinary edges; degenerate edges are not counted, since they are points rather than arcs of the surface. The validator reports a shell whose counts give no whole, non-negative genus; `Body::euler_counts` returns the counts and the genus.
+
+| Primitive | V | E (degenerate) | F | L | V - E + 2F - L | G |
+|---|---|---|---|---|---|---|
+| box | 8 | 12 | 6 | 6 | 2 | 0 |
+| cylinder, frustum | 2 | 3 | 3 | 3 | 2 | 0 |
+| cone with an apex | 2 | 2 (+1) | 2 | 2 | 2 | 0 |
+| sphere | 2 | 1 (+2) | 1 | 1 | 2 | 0 |
+| torus | 1 | 2 | 1 | 1 | 0 | 1 |
+
+### Tolerances in validation
+
+Vertices and edges carry their own tolerance (the operation's `OpContext::tolerance`, 1e-6 mm by default), which must be finite and at least `LINEAR`. Edge ends must lie within `max(edge tol, vertex tol)` of their vertices and the vertices on the curves; pcurves must agree with their edges within the edge tolerance at 17 evenly spaced parameters. Junctions in `(u, v)` are compared with a parametric tolerance per direction derived from the 3D one: the tolerance divided by the surface's parametric speed there, floored at a speed of 1 mm per unit (so at a pole, where `S_u` vanishes, `u` is checked to the 3D tolerance). Primitives refuse lengths below 10 times the tolerance.
+
+### Naming
+
+Every vertex, edge and face carries a `TopoName`, unique within its body (the validator reports duplicates; the entity kind is not part of the name). Names order structurally (variant first, then fields), are canonical (`Merged` parts and `Between` faces sorted, which deserialization enforces) and deterministic. Primitives name everything `Generated { op, source: Primitive, role }` and record it in the history as generated from nothing:
+
+| Primitive | Faces | Edges | Vertices |
+|---|---|---|---|
+| box | `Bottom` (`z = 0`), `Top`, `Front` (`y = 0`), `Back`, `Left` (`x = 0`), `Right` | `Edge(4 a + b1 + 2 b2)`: along axis `a` (0 = x, 1 = y, 2 = z) at the corner bits `b1`, `b2` of axes `a + 1` and `a + 2` (mod 3) | `Vertex(i + 2 j + 4 k)` at the corner `(i sx, j sy, k sz)` |
+| cylinder | `Bottom`, `Top`, `Side(0)` | `Edge(0)` bottom circle, `Edge(1)` top circle, `Seam(0)` | `Vertex(0)` bottom, `Vertex(1)` top |
+| cone | `Bottom`, `Top` (no cap at an apex), `Side(0)` | `Edge(0)`, `Edge(1)`, the degenerate `Apex` instead of the circle at an apex, `Seam(0)` | `Vertex(0)` bottom, `Vertex(1)` top |
+| sphere | `Side(0)` | `Seam(0)` (longitude 0), `Pole(0)` south, `Pole(1)` north | `Vertex(0)` south, `Vertex(1)` north |
+| torus | `Side(0)` | `Seam(0)` (the tube circle at `u = 0`), `Seam(1)` (the outer equator) | `Vertex(0)` |
+
+Placement: the box has a corner at the frame origin and spans `[0, sx] x [0, sy] x [0, sz]`; the cylinder and cone stand on the frame's XY plane with their axis along `z`; the sphere and torus are centred on the origin with their axis along `z`. Every seam lies at `u = 0`, on the frame's `+x` side.
+
+### Determinism
+
+Slotmap iteration visits slots in index order, and bodies are only ever built by inserting, so every iterator visits entities in construction order, which is the same for the same sequence of builder calls. Nothing iterates a hash map; maps use `BTreeMap`. Building the same primitive twice gives equal bodies, histories and serialized bytes.
+
+### Serialization
+
+Bodies serialize in a flat, index-based form (vertices, edges and faces in construction order, referring to each other by position; loops and coedges nested in their faces; shells in body order) and deserialize by rebuilding through `BodyBuilder` and validating, so a corrupt file is refused with the validator's issues instead of producing an invalid body. Every geometry type deserializes through its constructor as well (a zero radius, a skewed frame or a decreasing knot vector is refused). Two bodies are equal when their flat forms are, so a body equals its round trip. JSON round trips are exact only with `serde_json`'s `float_roundtrip` feature, which the kernel's tests enable and the document format will need too.
+
 ## Operations
 
 Kernel operations share one signature shape:
@@ -76,6 +142,7 @@ Add a row for each kernel bug, newest last. The regression test column names the
 | 2026-10-26 | Basis functions slightly negative one ulp past the domain end | Public basis functions did not clamp the parameter | Clamp to the domain | `basis_is_a_non_negative_partition_of_unity` |
 | 2026-10-27 | Principal curvatures off by 5e-9 on a sphere of radius 2 | Solving k² − 2Hk + K loses half the digits near umbilic points | Closed-form eigen-decomposition of the second fundamental form in an orthonormal tangent basis | `curvatures_stay_accurate_near_an_umbilic_point` |
 | 2026-10-27 | A NaN range end gave a valid-looking zero-length interval | `f64::min`/`max` ignore NaN in `Interval::new` | Propagate NaN to both ends | `nan_end_is_not_swallowed` |
+| 2026-10-27 | A very flat cone primitive (radius 7649 mm, height 0.0018 mm) failed pcurve agreement by 1.5e-6 mm | `Cone` stores its half-angle; `tan` near 90 degrees loses digits, so the radius is off by about `eps dr^2 / h` | The cone primitive refuses cones whose representation error would exceed a tenth of the tolerance | `too_flat_cones_are_refused` |
 
 ## Algorithm notes
 
