@@ -1,0 +1,1182 @@
+---
+source: crates/bevel-kernel/tests/primitives.rs
+expression: "&*unit_box().bodies[0]"
+---
+{
+  "kind": "Solid",
+  "vertices": [
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 0
+          }
+        }
+      },
+      "point": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 1
+          }
+        }
+      },
+      "point": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 2
+          }
+        }
+      },
+      "point": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 3
+          }
+        }
+      },
+      "point": [
+        1.0,
+        1.0,
+        0.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 4
+          }
+        }
+      },
+      "point": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 5
+          }
+        }
+      },
+      "point": [
+        1.0,
+        0.0,
+        1.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 6
+          }
+        }
+      },
+      "point": [
+        0.0,
+        1.0,
+        1.0
+      ],
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Vertex": 7
+          }
+        }
+      },
+      "point": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "tol": 0.000001
+    }
+  ],
+  "edges": [
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 0
+          }
+        }
+      },
+      "start": 0,
+      "end": 1,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 1
+          }
+        }
+      },
+      "start": 2,
+      "end": 3,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 2
+          }
+        }
+      },
+      "start": 4,
+      "end": 5,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 3
+          }
+        }
+      },
+      "start": 6,
+      "end": 7,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            1.0,
+            1.0
+          ],
+          "direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 4
+          }
+        }
+      },
+      "start": 0,
+      "end": 2,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            1.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 5
+          }
+        }
+      },
+      "start": 4,
+      "end": 6,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "direction": [
+            0.0,
+            1.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 6
+          }
+        }
+      },
+      "start": 1,
+      "end": 3,
+      "curve": {
+        "Line": {
+          "origin": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            1.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 7
+          }
+        }
+      },
+      "start": 5,
+      "end": 7,
+      "curve": {
+        "Line": {
+          "origin": [
+            1.0,
+            0.0,
+            1.0
+          ],
+          "direction": [
+            0.0,
+            1.0,
+            0.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 8
+          }
+        }
+      },
+      "start": 0,
+      "end": 4,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 9
+          }
+        }
+      },
+      "start": 1,
+      "end": 5,
+      "curve": {
+        "Line": {
+          "origin": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 10
+          }
+        }
+      },
+      "start": 2,
+      "end": 6,
+      "curve": {
+        "Line": {
+          "origin": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": {
+            "Edge": 11
+          }
+        }
+      },
+      "start": 3,
+      "end": 7,
+      "curve": {
+        "Line": {
+          "origin": [
+            1.0,
+            1.0,
+            0.0
+          ],
+          "direction": [
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "range": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "degenerate": false,
+      "tol": 0.000001
+    }
+  ],
+  "faces": [
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": "Bottom"
+        }
+      },
+      "surface": {
+        "Plane": {
+          "frame": {
+            "origin": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "x": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "y": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "z": [
+              0.0,
+              0.0,
+              -1.0
+            ]
+          }
+        }
+      },
+      "reversed": false,
+      "loops": [
+        [
+          {
+            "edge": 4,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 1,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  1.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 6,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  1.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 0,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": "Top"
+        }
+      },
+      "surface": {
+        "Plane": {
+          "frame": {
+            "origin": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "x": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "y": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "z": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        }
+      },
+      "reversed": false,
+      "loops": [
+        [
+          {
+            "edge": 2,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 7,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  1.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 3,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  1.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 5,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": "Front"
+        }
+      },
+      "surface": {
+        "Plane": {
+          "frame": {
+            "origin": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "x": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "y": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "z": [
+              0.0,
+              -1.0,
+              0.0
+            ]
+          }
+        }
+      },
+      "reversed": false,
+      "loops": [
+        [
+          {
+            "edge": 0,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 9,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  1.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 2,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  1.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 8,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": "Back"
+        }
+      },
+      "surface": {
+        "Plane": {
+          "frame": {
+            "origin": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "x": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "y": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "z": [
+              0.0,
+              1.0,
+              0.0
+            ]
+          }
+        }
+      },
+      "reversed": false,
+      "loops": [
+        [
+          {
+            "edge": 10,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 3,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  1.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 11,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  1.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 1,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": "Left"
+        }
+      },
+      "surface": {
+        "Plane": {
+          "frame": {
+            "origin": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "x": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "y": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "z": [
+              -1.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      },
+      "reversed": false,
+      "loops": [
+        [
+          {
+            "edge": 8,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 5,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  1.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 10,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  1.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 4,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": {
+        "Generated": {
+          "op": 1,
+          "source": "Primitive",
+          "role": "Right"
+        }
+      },
+      "surface": {
+        "Plane": {
+          "frame": {
+            "origin": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "x": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "y": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "z": [
+              1.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      },
+      "reversed": false,
+      "loops": [
+        [
+          {
+            "edge": 6,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 11,
+            "reversed": false,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  1.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 7,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  1.0
+                ],
+                "direction": [
+                  1.0,
+                  0.0
+                ]
+              }
+            }
+          },
+          {
+            "edge": 9,
+            "reversed": true,
+            "pcurve": {
+              "Line": {
+                "origin": [
+                  0.0,
+                  0.0
+                ],
+                "direction": [
+                  0.0,
+                  1.0
+                ]
+              }
+            }
+          }
+        ]
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "faces": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "closed": true
+    }
+  ]
+}

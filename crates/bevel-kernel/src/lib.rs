@@ -27,25 +27,35 @@
 //!   (references, loop closure in 3D and in `(u, v)`, 2-manifold closed
 //!   shells, orientation, pcurve and vertex agreement, seams, degenerate
 //!   edges, Euler-Poincare, unique names).
+//! - [`primitives`]: box, cylinder, sphere, cone and torus with exact
+//!   analytic geometry, outward normals and named faces, edges and
+//!   vertices.
 //! - Serialization: bodies serialize with serde in a flat, index-based
 //!   form and re-validate on deserialization, so a corrupt file never
-//!   produces an invalid body (see "Serialization" on [`Body`]). Names
-//!   and histories serialize too.
+//!   produces an invalid body (see "Serialization" on [`Body`]). Names,
+//!   histories and primitive parameters serialize too.
 //!
-//! Next: the primitives.
+//! Next: tessellation for display, then extrude, revolve and booleans.
 
 pub mod builder;
 pub mod naming;
+pub mod primitives;
 pub mod topology;
 pub mod validate;
 
 mod error;
 mod serial;
+#[cfg(test)]
+mod tests;
 
 pub use builder::BodyBuilder;
 pub use error::KernelError;
 pub use naming::{
     EntityKind, History, HistoryEntry, OpContext, OpOutput, OpTag, Role, Source, TopoName,
+};
+pub use primitives::{
+    BoxParams, ConeParams, CylinderParams, SphereParams, TorusParams, box_, cone, cylinder, sphere,
+    torus,
 };
 pub use topology::{
     Body, BodyKind, Coedge, CoedgeKey, Edge, EdgeKey, EntityKey, EulerCounts, Face, FaceKey, Loop,
