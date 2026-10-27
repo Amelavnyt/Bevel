@@ -148,7 +148,7 @@ pub(crate) fn unit_arc(start: f64, end: f64) -> Result<UnitArc, GeomError> {
 }
 
 /// Checks that the frame is finite, orthonormal and right-handed.
-fn check_frame(frame: &Frame3) -> Result<(), GeomError> {
+pub(crate) fn check_frame(frame: &Frame3) -> Result<(), GeomError> {
     let Frame3 { origin, x, y, z } = *frame;
     if !(origin.is_finite() && x.is_finite() && y.is_finite() && z.is_finite()) {
         return Err(GeomError::NonFinite);

@@ -12,7 +12,7 @@
 //! # Parametrizations
 //!
 //! Lengths are in millimetres and angles in radians. Every 3D type is
-//! placed by a right-handed orthonormal [`Frame3`] `(o, x, y, z)`; `e(u) =
+//! placed by a right-handed orthonormal [`Frame3`](bevel_math::Frame3) `(o, x, y, z)`; `e(u) =
 //! cos(u) x + sin(u) y` is the unit vector at angle `u` from `x`
 //! counter-clockwise about `z`.
 //!
@@ -99,13 +99,9 @@ pub use torus::Torus;
 
 use std::f64::consts::{PI, TAU};
 
-use bevel_math::{Frame3, Interval, Point2, Point3, Vector2, Vector3};
+use bevel_math::{Interval, Point2, Point3, Vector2, Vector3};
 
 use crate::{GeomError, MAX_DERIVATIVE_ORDER};
-
-/// Tolerance on the orthonormality of a frame's axes, as for
-/// [`circle_arc`](crate::circle_arc).
-const FRAME_TOLERANCE: f64 = 1e-9;
 
 /// The parameter domain of a curve, or of a surface in one direction.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -207,23 +203,7 @@ pub(crate) fn check_radius(r: f64) -> Result<(), GeomError> {
     }
 }
 
-/// Checks that the frame is finite, orthonormal and right-handed.
-pub(crate) fn check_frame(frame: &Frame3) -> Result<(), GeomError> {
-    let Frame3 { origin, x, y, z } = *frame;
-    if !(origin.is_finite() && x.is_finite() && y.is_finite() && z.is_finite()) {
-        return Err(GeomError::NonFinite);
-    }
-    let unit = |v: Vector3| (v.length() - 1.0).abs() <= FRAME_TOLERANCE;
-    if !(unit(x) && unit(y) && unit(z))
-        || x.dot(y).abs() > FRAME_TOLERANCE
-        || (x.cross(y) - z).length() > FRAME_TOLERANCE
-    {
-        return Err(GeomError::InvalidArgument(
-            "the frame must be orthonormal and right-handed",
-        ));
-    }
-    Ok(())
-}
+pub(crate) use crate::conics::check_frame;
 
 /// `v` scaled to unit length, or an error for a zero or non-finite vector.
 pub(crate) fn unit3(v: Vector3, what: &'static str) -> Result<Vector3, GeomError> {
