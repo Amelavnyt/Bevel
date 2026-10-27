@@ -209,3 +209,13 @@ Status: Accepted (2026-10-27)
 **Decision.** The renderer draws face and edge ids into an `R32Uint` target in an extra pass (edges widened so they are easy to hit), copies the single pixel under the cursor into a mappable buffer, and maps it asynchronously. The result arrives a frame or two later through `poll_pick()`; the extra pass runs only while a pick is pending, and only one readback is in flight. Ids are opaque `u32`s chosen by the application (0 means not pickable).
 
 **Consequences.** Picking costs one extra pass per request and has a latency of one or two frames, which is invisible for hover and selection. It picks exactly what is drawn, including edges, with no CPU-side structures. Exact hit points on surfaces and snapping need a CPU ray cast against a bounding volume hierarchy; that arrives with measurement in Phase 7.
+
+## ADR-0018: Floating tool dialogs instead of a properties panel
+
+Status: Accepted (2026-10-27)
+
+**Context.** The Phase 2 app had a permanent properties panel on the right that described the selection. It took a column of screen space for a few numbers, most of which only matter while measuring, and the feature dialogs to come (Extrude, Fillet, ...) would have competed with it for the same place. CAD users expect inspection results in the Measure tool and feature input in a dialog that appears while the feature is edited.
+
+**Decision.** There is no permanent properties panel. A tool that needs input or shows results opens a compact floating dialog over the viewport: a header with the tool's icon, its name in capitals and a close button, then its content. The Measure tool is the first; it shows results for the current selection with a copy button per value and a precision setting. Feature dialogs from Phase 4 on follow the same pattern.
+
+**Consequences.** The viewport gets the full width between the browser and the window edge. Mass properties that are not part of Measure (the inertia tensor and principal moments) wait for the Mass Properties tool. Dialogs can be dragged, so they never hide what the user is working on for long; their positions are not yet remembered between sessions.

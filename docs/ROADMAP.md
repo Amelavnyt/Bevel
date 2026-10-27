@@ -33,7 +33,8 @@ Helices and offset curves/surfaces, which are not exactly NURBS and are approxim
 - [x] Tessellation
 - [x] Rendering with edges
 - [x] GPU picking with hover and selection
-- [x] Mass properties
+- [x] Mass properties, face areas and edge lengths
+- [x] Measure dialog for the selection: area, length, volume, centre of mass
 - [x] STL export
 - [x] 3MF export
 
@@ -87,9 +88,9 @@ The CPU ray cast for exact hit points and silhouette edges of curved faces moved
 
 - [ ] CPU ray cast against a bounding volume hierarchy, for exact hit points and snapping (moved from Phase 2)
 - [ ] Silhouette edges of curved faces (moved from Phase 2)
-- [ ] Measure
+- [ ] Measure distances, angles and radii between selections
 - [ ] Section view
-- [ ] Mass-properties panel
+- [ ] Mass Properties tool (inertia tensor, principal moments and axes)
 
 ## Phase 8: Blends and offsets
 

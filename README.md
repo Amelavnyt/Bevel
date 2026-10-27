@@ -45,7 +45,7 @@ Open <http://localhost:8080>. A browser with WebGPU or WebGL2 is required. `trun
 | Select a face or edge | Click; Shift-click adds or removes; Esc clears |
 | Select a body | Click its name under Bodies in the browser |
 
-The properties panel shows the selection's name and the body's volume, area, centre of mass and principal moments of inertia. File > Export writes the visible bodies as STL or 3MF (a save dialog on the desktop, a download in the browser). Click a face of the view cube (top right of the viewport) to look from that side. The navigation bar at the bottom of the viewport has Home view, Fit All, the perspective/orthographic switch and the grid and origin toggles. Help > Viewport Controls lists all of this in the app.
+Press M (or click Measure in the INSPECT group) to open the Measure dialog: it shows the area of a selected face, the length of an edge, the volume, area and centre of mass of a whole body, and totals for several faces or edges, each with a copy button. File > Export writes the visible bodies as STL or 3MF (a save dialog on the desktop, a download in the browser). Click a face of the view cube (top right of the viewport) to look from that side. The navigation bar at the bottom of the viewport has Home view, Fit All, the perspective/orthographic switch and the grid and origin toggles. Help > Viewport Controls lists all of this in the app.
 
 ## Repository layout
 

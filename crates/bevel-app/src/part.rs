@@ -2,18 +2,18 @@
 
 //! The part shown until documents exist: the five kernel primitives as real
 //! B-rep bodies. It turns bodies into the renderer's plain buffers, keeps the
-//! table that maps pick ids back to faces and edges, describes selections for
-//! the properties panel, and exports meshes.
+//! table that maps pick ids back to faces and edges, measures selections for
+//! the Measure dialog, and exports meshes.
 
-use bevel_geom::Surface;
+use bevel_geom::{Curve3, Surface};
 use bevel_kernel::{
     Body, BodyMesh, BoxParams, ConeParams, CylinderParams, EdgeKey, FaceKey, KernelError,
     MassProperties, OpContext, OpTag, Role, SphereParams, TessellationOptions, TopoName,
-    TorusParams, mass_properties, tessellate,
+    TorusParams, edge_length, face_area, mass_properties, tessellate,
 };
 use bevel_math::{Frame3, Point3, Vector3};
 use bevel_render::{LineSet, TriangleMesh};
-use bevel_ui::{ExportFormat, SelectionInfo};
+use bevel_ui::{ExportFormat, MeasureValue, Measurement, SelectionInfo};
 use std::sync::Arc;
 
 /// Linear colour of bodies (a neutral grey).
@@ -262,54 +262,75 @@ impl Part {
             .unwrap_or_default()
     }
 
-    /// What the properties panel shows for `selection`.
+    /// What the Measure dialog shows for `selection`.
     pub fn selection_info(&self, selection: &[Target]) -> Option<SelectionInfo> {
         let first = *selection.first()?;
         let part_body = self.bodies.get(first.body())?;
-        let mut rows = Vec::new();
-        let title = if selection.iter().all(|t| t.body() == first.body())
+        let whole_body = selection.iter().all(|t| t.body() == first.body())
             && selection.len() == part_body.mesh.faces.len()
-            && selection.iter().all(|t| matches!(t, Target::Face { .. }))
-        {
-            part_body.name.clone()
-        } else if selection.len() > 1 {
-            format!("{} items", selection.len())
-        } else {
-            let body = &part_body.body;
-            match first {
+            && selection.iter().all(|t| matches!(t, Target::Face { .. }));
+        if whole_body {
+            return Some(body_info(part_body));
+        }
+        let cx = OpContext::new();
+        if let [only] = selection {
+            return self.single_info(*only, &cx);
+        }
+        let (mut faces, mut edges, mut area, mut length) = (0, 0, 0.0, 0.0);
+        for target in selection {
+            let part_body = self.bodies.get(target.body())?;
+            match *target {
                 Target::Face { face, .. } => {
-                    let face = body.face(face)?;
-                    rows.push(("Face".to_owned(), readable_name(&face.name)));
-                    rows.push(("Surface".to_owned(), surface_kind(&face.surface).to_owned()));
-                    format!("{} · face", part_body.name)
+                    faces += 1;
+                    area += face_area(&part_body.body, face, &cx).ok()?;
                 }
                 Target::Edge { edge, .. } => {
-                    let edge = body.edge(edge)?;
-                    rows.push(("Edge".to_owned(), readable_name(&edge.name)));
-                    format!("{} · edge", part_body.name)
+                    edges += 1;
+                    length += edge_length(&part_body.body, edge).ok()?;
                 }
             }
-        };
-        let m = &part_body.mass;
-        rows.push(("Body".to_owned(), part_body.name.clone()));
-        rows.push(("Volume".to_owned(), format!("{} mm³", fixed(m.volume))));
-        rows.push(("Area".to_owned(), format!("{} mm²", fixed(m.area))));
-        let c = m.centroid;
-        rows.push((
-            "Centre of mass".to_owned(),
-            format!("{}, {}, {} mm", fixed(c.x), fixed(c.y), fixed(c.z)),
-        ));
-        // Unit density, so moments of inertia are in mm^5.
-        for (axis, moment) in ["I1", "I2", "I3"]
-            .iter()
-            .zip(m.principal_moments.to_array())
-        {
-            rows.push((
-                format!("Principal moment {axis}"),
-                format!("{moment:.4e} mm⁵"),
-            ));
         }
-        Some(SelectionInfo { title, rows })
+        let mut measurements = Vec::new();
+        let mut parts = Vec::new();
+        if faces > 0 {
+            parts.push(count(faces, "face"));
+            measurements.push(numbers("Total area", vec![area], "mm²"));
+        }
+        if edges > 0 {
+            parts.push(count(edges, "edge"));
+            measurements.push(numbers("Total length", vec![length], "mm"));
+        }
+        Some(SelectionInfo {
+            title: parts.join(", "),
+            measurements,
+        })
+    }
+
+    fn single_info(&self, target: Target, cx: &OpContext) -> Option<SelectionInfo> {
+        let part_body = self.bodies.get(target.body())?;
+        let body = &part_body.body;
+        Some(match target {
+            Target::Face { face: key, .. } => {
+                let face = body.face(key)?;
+                SelectionInfo {
+                    title: format!("{} · {} face", part_body.name, readable_name(&face.name)),
+                    measurements: vec![
+                        text("Type", surface_kind(&face.surface)),
+                        numbers("Area", vec![face_area(body, key, cx).ok()?], "mm²"),
+                    ],
+                }
+            }
+            Target::Edge { edge: key, .. } => {
+                let edge = body.edge(key)?;
+                SelectionInfo {
+                    title: format!("{} · edge", part_body.name),
+                    measurements: vec![
+                        text("Type", curve_kind(&edge.curve)),
+                        numbers("Length", vec![edge_length(body, key).ok()?], "mm"),
+                    ],
+                }
+            }
+        })
     }
 
     /// The visible bodies as a mesh file.
@@ -338,20 +359,50 @@ impl Part {
     }
 }
 
-/// `value` with two decimals, without a minus sign on values that round to zero.
-fn fixed(value: f64) -> String {
-    let rounded = (value * 100.0).round() / 100.0;
-    // Adding zero turns -0.0 into +0.0.
-    format!("{:.2}", rounded + 0.0)
+/// Volume, area and centre of mass of a whole body.
+fn body_info(part_body: &PartBody) -> SelectionInfo {
+    let m = &part_body.mass;
+    SelectionInfo {
+        title: part_body.name.clone(),
+        measurements: vec![
+            text("Type", "Solid body"),
+            numbers("Volume", vec![m.volume], "mm³"),
+            numbers("Area", vec![m.area], "mm²"),
+            numbers("Centre of mass", m.centroid.to_array().to_vec(), "mm"),
+        ],
+    }
 }
 
-/// A short name for the properties panel: the role an entity plays
-/// ("Top", "Side 2", "Seam 1"), or its full persistent name when it has no
+fn numbers(label: &str, values: Vec<f64>, unit: &'static str) -> Measurement {
+    Measurement {
+        label: label.to_owned(),
+        value: MeasureValue::Numbers { values, unit },
+    }
+}
+
+fn text(label: &str, value: &str) -> Measurement {
+    Measurement {
+        label: label.to_owned(),
+        value: MeasureValue::Text(value.to_owned()),
+    }
+}
+
+/// "1 face", "3 edges".
+fn count(n: usize, noun: &str) -> String {
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
+}
+
+/// A short name for the Measure dialog: the role an entity plays
+/// ("Top", "Side", "Seam 1"), or its full persistent name when it has no
 /// single role.
 fn readable_name(name: &TopoName) -> String {
     match name {
         TopoName::Generated { role, .. } => match role {
-            Role::Side(i) => format!("Side {i}"),
+            Role::Side(_) => "Side".to_owned(),
             Role::Seam(i) => format!("Seam {i}"),
             Role::Pole(i) => format!("Pole {i}"),
             Role::Edge(i) => format!("Edge {i}"),
@@ -364,12 +415,21 @@ fn readable_name(name: &TopoName) -> String {
 
 fn surface_kind(surface: &Surface) -> &'static str {
     match surface {
-        Surface::Plane(_) => "Plane",
-        Surface::Cylinder(_) => "Cylinder",
-        Surface::Cone(_) => "Cone",
-        Surface::Sphere(_) => "Sphere",
-        Surface::Torus(_) => "Torus",
+        Surface::Plane(_) => "Planar",
+        Surface::Cylinder(_) => "Cylindrical",
+        Surface::Cone(_) => "Conical",
+        Surface::Sphere(_) => "Spherical",
+        Surface::Torus(_) => "Toroidal",
         Surface::Nurbs(_) => "NURBS",
+    }
+}
+
+fn curve_kind(curve: &Curve3) -> &'static str {
+    match curve {
+        Curve3::Line(_) => "Line",
+        Curve3::Circle(_) => "Circle",
+        Curve3::Ellipse(_) => "Ellipse",
+        Curve3::Nurbs(_) => "NURBS",
     }
 }
 
@@ -432,18 +492,24 @@ mod tests {
     }
 
     #[test]
-    fn values_that_round_to_zero_have_no_sign() {
-        assert_eq!(fixed(-0.001), "0.00");
-        assert_eq!(fixed(-0.0), "0.00");
-        assert_eq!(fixed(-1.234), "-1.23");
-    }
-
-    #[test]
     fn selecting_all_faces_of_a_body_names_the_body() {
         let part = Part::demo().unwrap();
         let info = part.selection_info(&part.body_faces(2)).unwrap();
         assert_eq!(info.title, "Sphere");
-        assert!(info.rows.iter().any(|(label, _)| label == "Volume"));
+        assert!(info.measurements.iter().any(|m| m.label == "Volume"));
+    }
+
+    fn value(info: &SelectionInfo, label: &str) -> f64 {
+        match &info
+            .measurements
+            .iter()
+            .find(|m| m.label == label)
+            .unwrap()
+            .value
+        {
+            MeasureValue::Numbers { values, .. } => values[0],
+            MeasureValue::Text(_) => panic!("{label} is text"),
+        }
     }
 
     #[test]
@@ -463,5 +529,41 @@ mod tests {
                 .iter()
                 .any(|t| matches!(t, Target::Edge { body: 2, .. }))
         );
+    }
+
+    #[test]
+    fn a_face_and_an_edge_are_measured() {
+        let part = Part::demo().unwrap();
+        let cylinder = &part.bodies[1].body;
+        let (side, _) = cylinder
+            .faces()
+            .find(|(_, f)| matches!(f.surface, Surface::Cylinder(_)))
+            .unwrap();
+        let info = part
+            .selection_info(&[Target::Face {
+                body: 1,
+                face: side,
+            }])
+            .unwrap();
+        let expected = 2.0 * std::f64::consts::PI * 20.0 * 40.0;
+        assert!((value(&info, "Area") - expected).abs() < 1e-6 * expected);
+        let (circle, _) = cylinder
+            .edges()
+            .find(|(_, e)| matches!(e.curve, Curve3::Circle(_)))
+            .unwrap();
+        let both = [
+            Target::Face {
+                body: 1,
+                face: side,
+            },
+            Target::Edge {
+                body: 1,
+                edge: circle,
+            },
+        ];
+        let info = part.selection_info(&both).unwrap();
+        assert_eq!(info.title, "1 face, 1 edge");
+        let circumference = 2.0 * std::f64::consts::PI * 20.0;
+        assert!((value(&info, "Total length") - circumference).abs() < 1e-9);
     }
 }

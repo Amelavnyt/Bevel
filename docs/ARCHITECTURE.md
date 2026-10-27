@@ -6,7 +6,7 @@ Rust snippets below that define types are planned designs, not code that exists 
 
 ## Current state
 
-Phases 0 and 1 are in place: the workspace, the renderer and the application shell on desktop and web; `bevel-math` (intervals, boxes, frames, robust predicates, polynomial roots, Newton iteration, Gauss–Legendre quadrature); and `bevel-geom` with NURBS curves and surfaces and their core algorithms, exact conics and swept surfaces, curve and surface fitting with lofts, analytic curves and surfaces with exact NURBS conversions, and the `Curve2`/`Curve3`/`Surface` enums with the `CurveGeom`/`SurfaceGeom` traits. View > Geometry Debug shows sample geometry. Phase 2 adds the B-rep kernel core (`bevel-kernel`: topology, persistent names, builder, validation, serialization, the five primitives, watertight tessellation and mass properties), STL and 3MF export (`bevel-io`), thick edges and GPU picking in the renderer, and an app that shows the primitives as bodies with hover, selection, mass properties and export. Sketching, the timeline, the model, documents, STEP and scripting are still stubs and are described here as the target design. See [ROADMAP.md](ROADMAP.md) for what comes next.
+Phases 0 and 1 are in place: the workspace, the renderer and the application shell on desktop and web; `bevel-math` (intervals, boxes, frames, robust predicates, polynomial roots, Newton iteration, Gauss–Legendre quadrature); and `bevel-geom` with NURBS curves and surfaces and their core algorithms, exact conics and swept surfaces, curve and surface fitting with lofts, analytic curves and surfaces with exact NURBS conversions, and the `Curve2`/`Curve3`/`Surface` enums with the `CurveGeom`/`SurfaceGeom` traits. View > Geometry Debug shows sample geometry. Phase 2 adds the B-rep kernel core (`bevel-kernel`: topology, persistent names, builder, validation, serialization, the five primitives, watertight tessellation and mass properties), STL and 3MF export (`bevel-io`), thick edges and GPU picking in the renderer, and an app that shows the primitives as bodies with hover, selection, a Measure dialog and export. Sketching, the timeline, the model, documents, STEP and scripting are still stubs and are described here as the target design. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## Glossary
 
@@ -160,7 +160,7 @@ Per face in parameter space. Each edge is discretized once and shared by both ad
 
 ### Mass properties and measurement
 
-Volume, area, centre of mass and the inertia tensor come from Gauss quadrature over trimmed faces, cross-checked against tessellation. Measurement covers distances, angles, radii and the minimum distance between any two entities.
+Volume, area, centre of mass and the inertia tensor come from Gauss quadrature over trimmed faces, cross-checked against tessellation. `face_area` and `edge_length` measure single faces (quadrature over the face's triangulation, mapped through the exact surface) and edges (adaptive quadrature of the curve speed). Measurement will cover distances, angles, radii and the minimum distance between any two entities.
 
 ## Sketching
 
@@ -359,14 +359,14 @@ The layout is dark by default and modelled on common parametric CAD tools.
 ├──────────────────────────────────────────────────────────────────────────┤
 │ [icons]   │ [icons] │ [icons]   │ [icons] │ [icon] │ [icon]              │  toolbar
 │ CREATE ▾  │ MODIFY ▾│ CONSTRUCT▾│ INSPECT▾│ INSERT▾│ UTILITIES ▾         │
-├───────────────┬──────────────────────────────────────────┬───────────────┤
-│ BROWSER       │                               view cube  │ PROPERTIES    │
-│ ▾ Untitled    │                                          │ (selection or │
-│   ▸ 👁 Origin  │              3D viewport                 │  feature      │
-│   ▸ Parameters│                                          │  dialog)      │
-│   ▸ Sketches  │ xyz                                      │               │
-│   ▸ Bodies    │        [home fit │ persp ortho │ grid]   │               │
-├───────────────┴──────────────────────────────────────────┴───────────────┤
+├───────────────┬──────────────────────────────────────────────────────────┤
+│ BROWSER       │                                               view cube  │
+│ ▾ Untitled    │                                     ┌─ MEASURE ─── × ┐  │
+│   ▸ 👁 Origin  │              3D viewport            │ (floating tool │  │
+│   ▸ Parameters│                                     │  or feature    │  │
+│   ▸ Sketches  │ xyz                                 │  dialog)       │  │
+│   ▸ Bodies    │        [home fit │ persp ortho │ grid]└───────────────┘  │
+├───────────────┴──────────────────────────────────────────────────────────┤
 │ ⏮ ◀ ▶ ⏭  [Sketch1][Extrude1][Fillet1] ▌ [Hole1][Pattern1]            mm │  timeline
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -388,6 +388,8 @@ There is one design workspace and no workspace tabs. The toolbar groups tools th
 | UTILITIES | Run Script | Script Editor |
 
 The tool list lives in `bevel-ui/src/tools.rs`. Each tool records its group, icon, shortcut, description and the roadmap phase that implements it. Until a tool exists, clicking it shows a notice saying which phase brings it.
+
+There is no permanent properties panel. Tools and features that need input open a small floating dialog over the viewport, with the tool's icon and name in its header and a close button (ADR-0018). Measure is the first: it shows the type and area of a face, the type and length of an edge, the volume, area and centre of mass of a whole body, and totals for several faces or edges, each with a copy button and a precision setting. M or the Measure tool toggles it.
 
 Sketching and inspection are tools, not modes the user switches into. Create Sketch is the first CREATE tool. While a sketch is open, the toolbar shows the sketch tools (line, arc, circle, rectangle, spline, dimension, constraints, trim, extend, offset, ...) and Finish Sketch, and the bottom bar shows the sketch's timeline. Finishing the sketch brings both back. Measure and Section Analysis work alongside modeling.
 

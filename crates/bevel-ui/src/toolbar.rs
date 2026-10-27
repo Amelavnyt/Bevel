@@ -63,7 +63,7 @@ fn group_ui(ui: &mut egui::Ui, state: &mut UiState, group: ToolGroup) {
                             )
                             .on_hover_ui(|ui| tooltip(ui, tool));
                         if response.clicked() {
-                            state.notify_unavailable(tool.name, tool.phase);
+                            state.activate(tool);
                         }
                     }
                 },
@@ -83,7 +83,7 @@ fn group_ui(ui: &mut egui::Ui, state: &mut UiState, group: ToolGroup) {
                         button = button.shortcut_text(key);
                     }
                     if ui.add(button).on_hover_ui(|ui| tooltip(ui, tool)).clicked() {
-                        state.notify_unavailable(tool.name, tool.phase);
+                        state.activate(tool);
                     }
                 }
             });
@@ -105,10 +105,12 @@ fn tooltip(ui: &mut egui::Ui, tool: &Tool) {
             ui.label(tool.description);
         });
     });
-    ui.add_space(2.0);
-    ui.label(
-        egui::RichText::new(format!("Coming in {}", tool.phase))
-            .small()
-            .color(theme::HIGHLIGHT),
-    );
+    if !tools::is_available(tool) {
+        ui.add_space(2.0);
+        ui.label(
+            egui::RichText::new(format!("Coming in {}", tool.phase))
+                .small()
+                .color(theme::HIGHLIGHT),
+        );
+    }
 }

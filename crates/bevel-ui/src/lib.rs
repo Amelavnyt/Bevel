@@ -9,7 +9,7 @@
 //! ```text
 //! app bar:  logo  menus  new open save  undo redo   <title>   branch  log
 //! toolbar:  CREATE | MODIFY | CONSTRUCT | INSPECT | INSERT | UTILITIES
-//! browser |          3D viewport (view cube, nav bar)         | properties
+//! browser |   3D viewport (view cube, nav bar, floating tool dialogs)
 //! log (optional)
 //! timeline
 //! ```
@@ -25,7 +25,7 @@ mod appbar;
 mod browser;
 pub mod icons;
 mod log;
-mod properties;
+mod measure;
 pub mod theme;
 mod timeline;
 mod toolbar;
@@ -94,13 +94,36 @@ pub struct BodyEntry {
     pub visible: bool,
 }
 
-/// What the properties panel shows for the current selection.
+/// One result in the Measure dialog.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MeasureValue {
+    /// One or more numbers in a unit, e.g. an area or a point.
+    Numbers {
+        /// The values; a point has three.
+        values: Vec<f64>,
+        /// Unit symbol, e.g. "mm²".
+        unit: &'static str,
+    },
+    /// A description, e.g. the type of a surface.
+    Text(String),
+}
+
+/// A labelled result in the Measure dialog.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Measurement {
+    /// What was measured, e.g. "Area".
+    pub label: String,
+    /// The result.
+    pub value: MeasureValue,
+}
+
+/// What the Measure dialog shows for the current selection.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SelectionInfo {
-    /// Heading, e.g. the body or face name.
+    /// What is selected, e.g. "Box · Top face".
     pub title: String,
-    /// Label and value rows, already formatted with units.
-    pub rows: Vec<(String, String)>,
+    /// The results.
+    pub measurements: Vec<Measurement>,
 }
 
 /// A short message shown over the viewport.
@@ -121,8 +144,6 @@ pub struct Notice {
 pub struct UiState {
     /// Whether the log panel is open.
     pub show_log: bool,
-    /// Whether the properties panel is open.
-    pub show_properties: bool,
     /// Whether the About window is open.
     pub show_about: bool,
     /// Whether the viewport controls window is open.
@@ -144,8 +165,12 @@ pub struct UiState {
     pub notice: Option<Notice>,
     /// The part's bodies, in browser order; the app keeps this in sync.
     pub bodies: Vec<BodyEntry>,
-    /// What is selected, for the properties panel; `None` when nothing is.
+    /// What is selected, for the Measure dialog; `None` when nothing is.
     pub selection: Option<SelectionInfo>,
+    /// Whether the Measure dialog is open.
+    pub measure_open: bool,
+    /// Decimal places the Measure dialog shows.
+    pub measure_decimals: usize,
     /// Current time, for timing notices; updated every frame.
     now: f64,
 }
@@ -154,7 +179,8 @@ impl Default for UiState {
     fn default() -> Self {
         Self {
             show_log: false,
-            show_properties: true,
+            measure_open: false,
+            measure_decimals: 2,
             show_about: false,
             show_controls: false,
             show_grid: true,
@@ -178,6 +204,16 @@ impl UiState {
             text: text.into(),
             until: self.now + NOTICE_SECONDS,
         });
+    }
+
+    /// Runs a toolbar tool: opens it if it exists, otherwise says when it
+    /// arrives.
+    fn activate(&mut self, tool: &tools::Tool) {
+        if tool.name == tools::MEASURE {
+            self.measure_open = true;
+        } else {
+            self.notify_unavailable(tool.name, tool.phase);
+        }
     }
 
     /// Tells the user that `name` doesn't exist yet and when it arrives.
@@ -241,24 +277,23 @@ pub fn workbench(
         .resizable(true)
         .default_size(230.0)
         .show(ui, |ui| browser::show(ui, state, &mut actions));
-    if state.show_properties {
-        egui::Panel::right("properties")
-            .frame(side_frame)
-            .resizable(true)
-            .default_size(300.0)
-            .size_range(260.0..=440.0)
-            .show(ui, |ui| properties::show(ui, state.selection.as_ref()));
-    }
     egui::CentralPanel::no_frame().show(ui, |ui| viewport(ui, state, &mut actions));
 
+    if state.measure_open {
+        measure::show(ui.ctx(), state);
+    }
     if state.show_about {
         about_window(ui.ctx(), &mut state.show_about);
     }
     if state.show_controls {
         controls_window(ui.ctx(), &mut state.show_controls);
     }
+    let typing = ui.ctx().egui_wants_keyboard_input();
     if ui.input(|i| i.key_pressed(egui::Key::Home)) {
         actions.push(UiAction::FitAll);
+    }
+    if !typing && ui.input(|i| i.key_pressed(egui::Key::M)) {
+        state.measure_open = !state.measure_open;
     }
     actions
 }
@@ -296,6 +331,8 @@ fn controls_window(ctx: &egui::Context, open: &mut bool) {
                     ("Zoom", "Scroll wheel or pinch, towards the cursor"),
                     ("Fit all", "Home"),
                     ("Standard views", "Click a face of the view cube"),
+                    ("Select", "Click; Shift + click adds or removes"),
+                    ("Measure", "M"),
                 ] {
                     ui.strong(action);
                     ui.label(how);
@@ -331,7 +368,6 @@ mod tests {
         let harness = harness(&mut state);
         for label in [
             "BROWSER",
-            "PROPERTIES",
             "Untitled",
             "Origin",
             "Create Sketch",
@@ -404,15 +440,33 @@ mod tests {
     }
 
     #[test]
-    fn properties_show_the_selection() {
+    fn there_is_no_properties_panel() {
+        let mut state = with_bodies();
+        let harness = harness(&mut state);
+        assert!(harness.query_by_label("PROPERTIES").is_none());
+    }
+
+    #[test]
+    fn measure_tool_opens_the_dialog_with_results() {
         let mut state = with_bodies();
         state.selection = Some(SelectionInfo {
-            title: "Box".to_owned(),
-            rows: vec![("Volume".to_owned(), "8000 mm³".to_owned())],
+            title: "Box · Top face".to_owned(),
+            measurements: vec![Measurement {
+                label: "Area".to_owned(),
+                value: MeasureValue::Numbers {
+                    values: vec![1600.0],
+                    unit: "mm²",
+                },
+            }],
         });
-        let harness = harness(&mut state);
-        harness.get_by_label("Volume");
-        harness.get_by_label("8000 mm³");
-        assert!(harness.query_by_label("Nothing selected").is_none());
+        {
+            let mut harness = harness(&mut state);
+            harness.get_by_label("Measure").click();
+            harness.run();
+            harness.get_by_label("MEASURE");
+            harness.get_by_label("Box · Top face");
+            harness.get_by_label("1,600.00 mm²");
+        }
+        assert!(state.measure_open);
     }
 }

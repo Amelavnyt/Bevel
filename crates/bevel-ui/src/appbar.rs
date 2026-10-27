@@ -153,7 +153,6 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>) {
         ui.separator();
         ui.checkbox(&mut state.show_grid, "Grid");
         ui.checkbox(&mut state.show_origin, "Origin axes");
-        ui.checkbox(&mut state.show_properties, "Properties panel");
         ui.checkbox(&mut state.show_geometry_debug, "Geometry Debug")
             .on_hover_text("Sample NURBS curves and surfaces from the geometry kernel");
         ui.checkbox(&mut state.show_log, "Log");
