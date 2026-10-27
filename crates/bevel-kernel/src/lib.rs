@@ -65,7 +65,7 @@ mod tests;
 
 pub use builder::BodyBuilder;
 pub use error::KernelError;
-pub use mass::{MassProperties, mass_properties};
+pub use mass::{MassProperties, edge_length, face_area, mass_properties};
 pub use naming::{
     EntityKind, History, HistoryEntry, OpContext, OpOutput, OpTag, Role, Source, TopoName,
 };

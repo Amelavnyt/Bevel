@@ -66,14 +66,14 @@
 //! of a rotation matrix (orthonormal and right-handed).
 
 use bevel_geom::{Curve2, CurveGeom, SurfaceGeom};
-use bevel_math::quadrature::gauss_legendre;
+use bevel_math::quadrature::{gauss_legendre, integrate_adaptive};
 use bevel_math::{DMat3, DVec3, Point2, Point3, Vector3};
 
 use crate::KernelError;
 use crate::naming::OpContext;
 use crate::tessellate::face::FaceDomain;
 use crate::tessellate::{MAX_POINTS, TessellationOptions, discretize_edges, triangulate_face};
-use crate::topology::{Body, BodyKind, EntityKey, Face, FaceKey};
+use crate::topology::{Body, BodyKind, EdgeKey, EntityKey, Face, FaceKey};
 
 /// The angular tolerance of the triangulation used for integration.
 const ANGULAR: f64 = 0.3;
@@ -209,6 +209,75 @@ pub fn mass_properties(body: &Body, cx: &OpContext) -> Result<MassProperties, Ke
         inertia: to_mat(inertia),
         principal_moments: DVec3::from_array(moments),
         principal_axes: to_mat(axes),
+    })
+}
+
+/// The area of one face in mm², integrated on the exact surface over the
+/// face's trimmed parameter domain, like the area in [`mass_properties`].
+///
+/// # Errors
+///
+/// [`KernelError::UnknownKey`] for a face not in `body`, the tessellation
+/// errors of the integration domain and [`KernelError::Cancelled`].
+pub fn face_area(body: &Body, face: FaceKey, cx: &OpContext) -> Result<f64, KernelError> {
+    let Some(face_data) = body.face(face) else {
+        return Err(KernelError::UnknownKey(EntityKey::Face(face)));
+    };
+    let size = body.bounds().size().length();
+    if !(size.is_finite() && size > 0.0) {
+        return Err(KernelError::InvalidInput {
+            what: "body",
+            reason: "it has no finite, positive extent",
+        });
+    }
+    let options = TessellationOptions {
+        chordal: size,
+        angular: ANGULAR,
+        max_edge: None,
+    };
+    let rule = rule()?;
+    let edges = discretize_edges(body, &options, MAX_POINTS, cx)?;
+    let domain = triangulate_face(body, face, &edges, &options, MAX_POINTS, cx)?;
+    let mut nodes = Vec::new();
+    face_nodes(
+        body,
+        face,
+        face_data,
+        &domain,
+        &rule,
+        Point3::ZERO,
+        &mut nodes,
+    )?;
+    Ok(nodes.iter().map(|q| q.w * q.n.length()).sum())
+}
+
+/// The length of one edge in mm: the integral of the curve's speed over
+/// the edge's parameter range (zero for degenerate edges).
+///
+/// # Errors
+///
+/// [`KernelError::UnknownKey`] for an edge not in `body`, and
+/// [`KernelError::InvalidInput`] if the integral does not converge.
+pub fn edge_length(body: &Body, edge: EdgeKey) -> Result<f64, KernelError> {
+    let Some(data) = body.edge(edge) else {
+        return Err(KernelError::UnknownKey(EntityKey::Edge(edge)));
+    };
+    if data.degenerate {
+        return Ok(0.0);
+    }
+    let speed = |t: f64| {
+        data.curve
+            .derivatives(t, 1)
+            .get(1)
+            .map_or(0.0, |d| d.length())
+    };
+    // An absolute tolerance relative to the chord keeps the error far
+    // below the model's linear resolution for any edge size.
+    let chord = (data.curve.point(data.range.max) - data.curve.point(data.range.min)).length();
+    let tol = (1e-10 * chord.max(1.0)).max(1e-12);
+    integrate_adaptive(speed, data.range, tol, 40).map_err(|_| KernelError::InvalidInput {
+        what: "edge",
+        reason: "its length did not converge",
     })
 }
 
