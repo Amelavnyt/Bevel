@@ -655,6 +655,12 @@ mod tests {
     }
 
     #[test]
+    fn cube_model_xml_snapshot() {
+        let xml = String::from_utf8(model_xml(&[unit_cube()]).unwrap()).unwrap();
+        insta::assert_snapshot!(xml);
+    }
+
+    #[test]
     fn output_is_byte_identical_across_runs() {
         let meshes = [unit_cube(), unit_cube()];
         assert_eq!(write_to_vec(&meshes), write_to_vec(&meshes));
