@@ -42,8 +42,10 @@ Open <http://localhost:8080>. A browser with WebGPU or WebGL2 is required. `trun
 | Pan | Middle drag, or Shift + right drag |
 | Zoom (towards the cursor) | Scroll wheel or pinch |
 | Fit all | Home, or View > Fit All |
+| Select a face or edge | Click; Shift-click adds or removes; Esc clears |
+| Select a body | Click its name under Bodies in the browser |
 
-Click a face of the view cube (top right of the viewport) to look from that side. The navigation bar at the bottom of the viewport has Home view, Fit All, the perspective/orthographic switch and the grid and origin toggles. Help > Viewport Controls lists all of this in the app.
+The properties panel shows the selection's name and the body's volume, area, centre of mass and principal moments of inertia. File > Export writes the visible bodies as STL or 3MF (a save dialog on the desktop, a download in the browser). Click a face of the view cube (top right of the viewport) to look from that side. The navigation bar at the bottom of the viewport has Home view, Fit All, the perspective/orthographic switch and the grid and origin toggles. Help > Viewport Controls lists all of this in the app.
 
 ## Repository layout
 

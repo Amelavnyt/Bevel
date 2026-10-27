@@ -28,14 +28,16 @@ Helices and offset curves/surfaces, which are not exactly NURBS and are approxim
 
 ## Phase 2: B-rep and display
 
-- [ ] Topology, builders, validation and serialization
-- [ ] The five primitives: box, cylinder, sphere, cone, torus
-- [ ] Tessellation
-- [ ] Rendering with edges
-- [ ] GPU picking with hover and selection
-- [ ] Mass properties
-- [ ] STL export
-- [ ] 3MF export
+- [x] Topology, builders, validation and serialization
+- [x] The five primitives: box, cylinder, sphere, cone, torus
+- [x] Tessellation
+- [x] Rendering with edges
+- [x] GPU picking with hover and selection
+- [x] Mass properties
+- [x] STL export
+- [x] 3MF export
+
+The CPU ray cast for exact hit points and silhouette edges of curved faces moved to Phase 7.
 
 ## Phase 3: Document and timeline
 
