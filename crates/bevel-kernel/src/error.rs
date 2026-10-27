@@ -95,6 +95,31 @@ pub enum KernelError {
     /// The operation was cancelled through its context.
     #[error("the operation was cancelled")]
     Cancelled,
+
+    /// Tessellating `entity` (an edge or a face) to the requested
+    /// tolerances would need more than `limit` points. Loosen the
+    /// tolerances; the limit keeps a tiny tolerance from exhausting
+    /// memory.
+    #[error(
+        "tessellating {entity} needs more than {limit} points; loosen the tessellation tolerances"
+    )]
+    PointLimit {
+        /// The edge or face being tessellated.
+        entity: EntityKey,
+        /// The largest number of points allowed.
+        limit: usize,
+    },
+
+    /// `entity` (an edge or a face) cannot be tessellated; the message
+    /// says why (for example a face boundary that crosses itself in
+    /// `(u, v)` once discretized).
+    #[error("cannot tessellate {entity}: {reason}")]
+    Tessellation {
+        /// The edge or face.
+        entity: EntityKey,
+        /// Why.
+        reason: &'static str,
+    },
 }
 
 /// "N issues; first: ..." for [`KernelError::InvalidBody`].

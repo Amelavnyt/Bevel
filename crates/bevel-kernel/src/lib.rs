@@ -34,12 +34,21 @@
 //!   form and re-validate on deserialization, so a corrupt file never
 //!   produces an invalid body (see "Serialization" on [`Body`]). Names,
 //!   histories and primitive parameters serialize too.
+//! - [`tessellate`](mod@tessellate): [`tessellate`](fn@tessellate) turns a
+//!   body into a [`BodyMesh`] (a [`FaceMesh`] per face, an
+//!   [`EdgePolyline`] per edge) to the chordal and angular tolerances of
+//!   [`TessellationOptions`] (coarse, fine and export presets). Edges are
+//!   discretized once and shared, so meshes of closed shells are
+//!   watertight; faces are triangulated in `(u, v)` by a constrained
+//!   Delaunay triangulation refined adaptively, with exact surface points
+//!   and normals.
 //!
-//! Next: tessellation for display, then extrude, revolve and booleans.
+//! Next: extrude, revolve and booleans.
 
 pub mod builder;
 pub mod naming;
 pub mod primitives;
+pub mod tessellate;
 pub mod topology;
 pub mod validate;
 
@@ -57,6 +66,7 @@ pub use primitives::{
     BoxParams, ConeParams, CylinderParams, SphereParams, TorusParams, box_, cone, cylinder, sphere,
     torus,
 };
+pub use tessellate::{BodyMesh, EdgePolyline, FaceMesh, TessellationOptions, tessellate};
 pub use topology::{
     Body, BodyKind, Coedge, CoedgeKey, Edge, EdgeKey, EntityKey, EulerCounts, Face, FaceKey, Loop,
     LoopKey, Shell, ShellKey, Vertex, VertexKey,

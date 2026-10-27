@@ -16,6 +16,7 @@ bevel-math.workspace = true
 bevel-geom.workspace = true
 serde = { workspace = true, features = ["rc"] }
 slotmap.workspace = true
+spade.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -8,55 +8,17 @@
 // Helpers outside `#[test]` functions unwrap freely too.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::f64::consts::TAU;
+mod common;
 
 use bevel_geom::{CurveGeom, SurfaceGeom};
 use bevel_kernel::{
     Body, BoxParams, ConeParams, CylinderParams, OpContext, OpOutput, OpTag, SphereParams,
     TorusParams, box_, cone, cylinder, sphere, torus, validate,
 };
-use bevel_math::{DQuat, DVec3, Frame3, Point2, Point3, Vector3};
+use bevel_math::{Frame3, Point2, Point3, Vector3};
+use common::{config, frame, length};
 use proptest::prelude::*;
-use proptest::test_runner::{Config, RngSeed, TestCaseError};
-
-/// A fixed-seed configuration so that runs are reproducible.
-///
-/// For exploratory runs, `BEVEL_PROPTEST_SEED` replaces the seed and
-/// `BEVEL_PROPTEST_CASES` the number of cases.
-fn config(cases: u32) -> Config {
-    let env = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<u64>().ok());
-    Config {
-        cases: env("BEVEL_PROPTEST_CASES").map_or(cases, |c| u32::try_from(c).unwrap_or(cases)),
-        rng_seed: RngSeed::Fixed(env("BEVEL_PROPTEST_SEED").unwrap_or(0x00b0_d1e5)),
-        failure_persistence: None,
-        ..Config::default()
-    }
-}
-
-/// A random rigid frame with its origin within 500 mm of the world origin.
-fn frame() -> impl Strategy<Value = Frame3> {
-    (
-        prop::array::uniform3(-1.0f64..1.0),
-        0.0f64..TAU,
-        prop::array::uniform3(-500.0f64..500.0),
-    )
-        .prop_map(|(a, angle, o)| {
-            let axis = DVec3::from_array(a).try_normalize().unwrap_or(DVec3::Z);
-            let q = DQuat::from_axis_angle(axis, angle);
-            Frame3 {
-                origin: DVec3::from_array(o),
-                x: q * DVec3::X,
-                y: q * DVec3::Y,
-                z: q * DVec3::Z,
-            }
-        })
-}
-
-/// A random length in millimetres, log-uniform from 1 um to 20 m, so that
-/// tiny, huge and badly proportioned primitives all appear.
-fn length() -> impl Strategy<Value = f64> {
-    (-3.0f64..4.3).prop_map(|e| 10f64.powf(e))
-}
+use proptest::test_runner::TestCaseError;
 
 /// Interior points of each face in `(u, v)`: the centroid of the outer
 /// loop's samples and the points halfway from it to some of them. Every
