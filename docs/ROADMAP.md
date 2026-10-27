@@ -16,13 +16,15 @@ Each phase ends with CI green and a demo that can be tried by hand. Items are ch
 
 ## Phase 1: Math and NURBS
 
-- [ ] bevel-math: vectors, transforms, boxes, intervals, tolerances, robust predicates, root finding, Newton, quadrature
-- [ ] NURBS curves and surfaces: knot vectors, basis functions, evaluation and derivatives, knot insertion/refinement/removal, degree elevation and reduction, Bezier decomposition, split, reverse, reparametrize
-- [ ] Exact circles, arcs and conics as rational quadratics; exact surfaces of revolution and extrusion
-- [ ] Interpolation and least-squares fitting for curves and surfaces
-- [ ] Point inversion, projection, arc length and curvature
-- [ ] Analytic types (line, circle, ellipse, plane, cylinder, cone, sphere, torus) with `to_nurbs`
-- [ ] A debug view that displays test curves and surfaces
+- [x] bevel-math: vectors, transforms, boxes, intervals, tolerances, robust predicates, root finding, Newton, quadrature
+- [x] NURBS curves and surfaces: knot vectors, basis functions, evaluation and derivatives, knot insertion/refinement/removal, degree elevation and reduction, Bezier decomposition, split, reverse, reparametrize
+- [x] Exact circles, arcs and conics as rational quadratics; exact surfaces of revolution and extrusion
+- [x] Interpolation and least-squares fitting for curves and surfaces
+- [x] Point inversion, projection, arc length and curvature
+- [x] Analytic types (line, circle, ellipse, plane, cylinder, cone, sphere, torus) with `to_nurbs`
+- [x] A debug view that displays test curves and surfaces
+
+Helices and offset curves/surfaces, which are not exactly NURBS and are approximated within a tolerance, moved to the phases that need them: offsets to Phase 8 (fillets and shells), helices to Phase 10 (threads).
 
 ## Phase 2: B-rep and display
 
@@ -87,6 +89,7 @@ Each phase ends with CI green and a demo that can be tried by hand. Items are ch
 
 ## Phase 8: Blends and offsets
 
+- [ ] Offset curves and surfaces, approximated within a recorded tolerance
 - [ ] Fillet
 - [ ] Chamfer
 - [ ] Shell
@@ -103,6 +106,7 @@ Each phase ends with CI green and a demo that can be tried by hand. Items are ch
 
 ## Phase 10: Holes and threads
 
+- [ ] Helices, approximated within a recorded tolerance
 - [ ] ISO metric data: clearance per ISO 273, tap drills, counterbores for ISO 4762, 90-degree countersinks for ISO 10642, M1.6 to M24 first (UNC/UNF later)
 - [ ] Simple, counterbore, countersink and tapped holes on faces or sketch points
 - [ ] Cosmetic threads

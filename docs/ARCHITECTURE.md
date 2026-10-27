@@ -6,7 +6,7 @@ Rust snippets below that define types are planned designs, not code that exists 
 
 ## Current state
 
-Phase 0 is in place: the Cargo workspace with every crate compiling, the renderer with grid, axes and a lit test cube, the egui layout with empty panels, and the app running on both desktop and web. Everything below the renderer in the layer diagram (kernel, sketching, timeline, model, document, I/O, scripting) is still stubs and is described here as the target design. See [ROADMAP.md](ROADMAP.md) for what comes next.
+Phases 0 and 1 are in place: the workspace, the renderer and the application shell on desktop and web; `bevel-math` (intervals, boxes, frames, robust predicates, polynomial roots, Newton iteration, Gauss–Legendre quadrature); and `bevel-geom` with NURBS curves and surfaces and their core algorithms, exact conics and swept surfaces, curve and surface fitting with lofts, analytic curves and surfaces with exact NURBS conversions, and the `Curve2`/`Curve3`/`Surface` enums with the `CurveGeom`/`SurfaceGeom` traits. View > Geometry Debug shows sample geometry. Everything from the kernel up (topology, sketching, timeline, model, document, I/O, scripting) is still stubs and is described here as the target design. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## Glossary
 

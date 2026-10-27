@@ -79,6 +79,17 @@ Add a row for each kernel bug, newest last. The regression test column names the
 
 ## Algorithm notes
 
+Conventions in `bevel-geom` that every caller relies on:
+
+- **Homogeneous storage** ([ADR-0016](DECISIONS.md#adr-0016-nurbs-stored-in-homogeneous-coordinates-one-implementation-for-2d-and-3d)): control points are stored weighted, `(w·P, w)`, and weights must be finite and positive. Every algorithm is written once for 2D and 3D through the `Homogeneous` trait.
+- **Knots** closer than `KnotVector::tolerance()` (1e-12 of the knot range, at least 4 ulps) are snapped together on construction, so multiplicities are well defined. Parameters outside a curve's or surface's domain are clamped.
+- **Representation changes** (knot insertion, refinement and removal, degree elevation, Bézier decomposition, split, reparametrization) keep the geometry unchanged; degree reduction and knot removal report a rigorous error bound and stay within the requested tolerance.
+- **Closest point** on curves and surfaces seeds by sampling every knot span or patch, refines with the Newton iteration of The NURBS Book section 6.1 (step-controlled to decrease the distance), and runs a branch-and-bound pass over Bézier segments or patches with a sound lower bound, so it never returns anything worse than sampling.
+- **Principal curvatures** are signed relative to the surface normal: positive where the surface bends towards the normal. A sphere with an outward normal therefore reports `-1/r`. They are computed as the eigen-decomposition of the second fundamental form in an orthonormal tangent basis, which stays accurate near umbilic points.
+- **Conics** use the angle as their parameter range: a circle or ellipse arc over `[start, end]` agrees with the angle at its knots. Between knots the NURBS parameter is not the angle; `ParamMap` converts between the two exactly, and `to_nurbs_mapped` returns the map with the converted geometry.
+- **Analytic transforms**: rigid motions and uniform scaling keep analytic types. Under non-uniform scaling a circle becomes an ellipse; a sphere or torus becomes its exact NURBS form; a cylinder or cone stays analytic only if the map is conformal across its axis. Singular and (for analytic types) projective matrices are rejected.
+- **Fitting**: least-squares error is not monotone in the number of control points, because the knot vectors for different counts are not nested. `approximate_to_tolerance` finds a count that meets the tolerance, not necessarily the smallest.
+
 References for the kernel and geometry crates. Source code is only ported from GPL-compatible projects, with attribution and the original notices kept; otherwise implementations are written from the books and papers.
 
 - Piegl and Tiller, *The NURBS Book* (2nd ed.): NURBS algorithms. Doc comments cite algorithm numbers.
