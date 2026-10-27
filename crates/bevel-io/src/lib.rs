@@ -7,16 +7,17 @@
 //! crates; importing produces kernel bodies that the application turns into
 //! an `ImportBody` command.
 //!
-//! Status: the plain mesh type ([`ExportMesh`]) and the STL writers and
-//! reader ([`stl`]) exist. The writers take a kernel-independent mesh, so an
-//! adapter from kernel tessellations can be added without touching them.
-//! 3MF arrives next; STEP follows in the "STEP" phase.
+//! Status: the plain mesh type ([`ExportMesh`]), the STL writers and reader
+//! ([`stl`]) and the 3MF writer and reader ([`threemf`]) exist. The writers
+//! take a kernel-independent mesh, so an adapter from kernel tessellations
+//! can be added without touching them. STEP follows in the "STEP" phase.
 //!
 //! All coordinates handed to the writers are in millimetres.
 
 mod error;
 mod mesh;
 pub mod stl;
+pub mod threemf;
 
 #[cfg(test)]
 mod test_util;
