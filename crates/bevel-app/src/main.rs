@@ -5,6 +5,7 @@
 //! Everything that differs between the two targets lives in [`platform`].
 
 mod app;
+mod geometry_debug;
 mod platform;
 mod scene;
 mod viewport;

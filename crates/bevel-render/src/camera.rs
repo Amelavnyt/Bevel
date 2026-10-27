@@ -230,14 +230,45 @@ impl Camera {
         if bounds.is_empty() {
             return;
         }
-        let radius = bounds.bounding_radius().max(1.0);
-        let half_fov_y = 0.5 * self.fov_y;
-        let half_fov_x = (half_fov_y.tan() * aspect.max(1e-6)).atan();
-        let half_fov = half_fov_y.min(half_fov_x);
-        self.target = bounds.center();
-        // A sphere of this radius just touches the narrower frustum edges;
-        // the margin leaves some room around the model.
-        self.distance = (1.5 * radius / half_fov.sin()).clamp(MIN_DISTANCE, MAX_DISTANCE);
+        let aspect = aspect.max(1e-6);
+        let tan_y = (0.5 * self.fov_y).tan();
+        let tan_x = tan_y * aspect;
+        let center = bounds.center();
+        let (right, up, back) = (self.right(), self.up(), self.back());
+        // The smallest distance at which every corner of the box is inside
+        // the frustum: a corner at (x, y) across the view and z towards the
+        // eye needs `|x| <= (distance - z) * tan_x`, and likewise for y.
+        let mut distance: f64 = 1.0;
+        for i in 0..8 {
+            let corner = Point3::new(
+                if i & 1 == 0 {
+                    bounds.min.x
+                } else {
+                    bounds.max.x
+                },
+                if i & 2 == 0 {
+                    bounds.min.y
+                } else {
+                    bounds.max.y
+                },
+                if i & 4 == 0 {
+                    bounds.min.z
+                } else {
+                    bounds.max.z
+                },
+            );
+            let d = corner - center;
+            // In an orthographic view depth doesn't change the screen size.
+            let z = match self.projection {
+                Projection::Perspective => d.dot(back),
+                Projection::Orthographic => 0.0,
+            };
+            let (x, y) = (d.dot(right), d.dot(up));
+            distance = distance.max(z + x.abs() / tan_x).max(z + y.abs() / tan_y);
+        }
+        self.target = center;
+        // Leave a margin around the model.
+        self.distance = (1.25 * distance).clamp(MIN_DISTANCE, MAX_DISTANCE);
     }
 }
 
@@ -380,8 +411,18 @@ mod tests {
             Point3::new(30.0, 10.0, 20.0),
         );
         let aspect = 0.5;
-        let mut camera = Camera::default();
-        camera.fit(&bounds, aspect);
+        for projection in [Projection::Perspective, Projection::Orthographic] {
+            let mut camera = Camera {
+                projection,
+                ..Camera::default()
+            };
+            camera.fit(&bounds, aspect);
+            assert_fits(&camera, &bounds, aspect);
+        }
+    }
+
+    fn assert_fits(camera: &Camera, bounds: &Aabb3, aspect: f64) {
+        let mut widest: f64 = 0.0;
         for i in 0..8 {
             let corner = Point3::new(
                 if i & 1 == 0 {
@@ -400,9 +441,13 @@ mod tests {
                     bounds.max.z
                 },
             );
-            let ndc = ndc_of(&camera, corner, aspect);
+            let ndc = ndc_of(camera, corner, aspect);
             assert!(ndc.abs().max_element() < 1.0, "corner {corner} at {ndc}");
+            widest = widest.max(ndc.abs().max_element());
         }
+        // Snug, not just inside: with the 25% margin the widest corner sits
+        // near 1 / 1.25 = 0.8, a little less in perspective.
+        assert!(widest > 0.7, "fit is loose: widest corner at {widest}");
     }
 
     #[test]

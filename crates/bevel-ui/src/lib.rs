@@ -82,6 +82,9 @@ pub struct UiState {
     pub show_grid: bool,
     /// Whether the origin axes are drawn.
     pub show_origin: bool,
+    /// Whether the viewport shows the geometry debug scene (sample NURBS
+    /// curves and surfaces) instead of the test cube.
+    pub show_geometry_debug: bool,
     /// Current projection, mirrored from the camera.
     pub projection: Projection,
     /// Name of the checked-out branch.
@@ -103,6 +106,7 @@ impl Default for UiState {
             show_controls: false,
             show_grid: true,
             show_origin: true,
+            show_geometry_debug: false,
             projection: Projection::Perspective,
             branch: "main".to_owned(),
             can_quit: true,

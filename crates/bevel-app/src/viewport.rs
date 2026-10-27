@@ -10,6 +10,8 @@ use eframe::egui_wgpu::{self, wgpu};
 pub struct Viewport {
     renderer: ViewportRenderer,
     texture: Option<egui::TextureId>,
+    /// Whether the geometry debug scene is shown instead of the test cube.
+    geometry_debug: bool,
 }
 
 impl Viewport {
@@ -20,7 +22,28 @@ impl Viewport {
         Self {
             renderer,
             texture: None,
+            geometry_debug: false,
         }
+    }
+
+    /// Shows the geometry debug scene (`on`) or the test cube. Returns
+    /// whether the scene changed, so the caller can reframe the view.
+    pub fn show_geometry_debug(
+        &mut self,
+        device: &wgpu::Device,
+        on: bool,
+    ) -> Result<bool, bevel_geom::GeomError> {
+        if on == self.geometry_debug {
+            return Ok(false);
+        }
+        let (meshes, lines) = if on {
+            crate::geometry_debug::scene()?
+        } else {
+            crate::scene::test_scene()
+        };
+        self.renderer.set_scene(device, &meshes, &lines);
+        self.geometry_debug = on;
+        Ok(true)
     }
 
     pub fn set_overlays(&mut self, overlays: ViewportOverlays) {

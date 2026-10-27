@@ -13,3 +13,8 @@ workspace = true
 
 [dependencies]
 bevel-math.workspace = true
+nalgebra.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

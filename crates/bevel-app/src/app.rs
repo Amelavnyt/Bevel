@@ -115,6 +115,7 @@ impl eframe::App for BevelApp {
         let camera = &mut self.camera;
         let viewport = &mut self.viewport;
         let aspect = &mut self.aspect;
+        let fit_pending = &mut self.fit_pending;
         let actions = bevel_ui::workbench(ui, &mut self.ui, &self.log, |ui, state, actions| {
             let area = bevel_ui::viewport::interact(ui, camera);
             *aspect = area.aspect();
@@ -124,6 +125,16 @@ impl eframe::App for BevelApp {
                         grid: state.show_grid,
                         axes: state.show_origin,
                     });
+                    match viewport
+                        .show_geometry_debug(&render_state.device, state.show_geometry_debug)
+                    {
+                        Ok(changed) => *fit_pending |= changed,
+                        Err(err) => {
+                            tracing::error!(%err, "geometry debug scene failed");
+                            state.show_geometry_debug = false;
+                            state.notify(format!("The geometry debug scene failed: {err}"));
+                        }
+                    }
                     Some(viewport.render(render_state, area.size_px, camera))
                 }
                 _ => None,
