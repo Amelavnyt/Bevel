@@ -19,3 +19,10 @@ bevel-sketch.workspace = true
 bevel-expr.workspace = true
 bevel-timeline.workspace = true
 bevel-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

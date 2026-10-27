@@ -42,15 +42,15 @@ The CPU ray cast for exact hit points and silhouette edges of curved faces moved
 
 ## Phase 3: Document and timeline
 
-- [ ] bevel-timeline: generic timeline with marker, reorder, suppress and replay cache
-- [ ] bevel-expr: expressions, units and parameter tables
-- [ ] bevel-model: primitive features, origin, regeneration with cache
-- [ ] bevel-doc: commands, undo/redo, object store
-- [ ] `.bevel` v1 with migration scaffold
+- [x] bevel-timeline: generic timeline with marker, reorder, suppress and replay cache
+- [x] bevel-expr: expressions, units and parameter tables
+- [x] bevel-model: primitive features, origin, regeneration with cache
+- [x] bevel-doc: commands, undo/redo, object store
+- [x] `.bevel` v1 with migration scaffold
 - [ ] Browser tree
 - [ ] Part timeline widget (marker, reorder, suppress, edit)
 - [ ] Parameters dialog
-- [ ] CLI `rebuild`, `info` and `export`
+- [x] CLI `rebuild`, `info` and `export`
 
 ## Phase 4: Booleans
 
