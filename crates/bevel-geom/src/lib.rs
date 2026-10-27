@@ -62,6 +62,10 @@
 //!   quadratic arcs, surfaces of revolution), with a [`ParamMap`] per
 //!   direction relating the NURBS parameters to the analytic ones in
 //!   closed form.
+//! - [`geometry`]: the [`CurveGeom`] and [`SurfaceGeom`] traits,
+//!   implemented by every analytic type, by the NURBS types (delegating to
+//!   their own methods) and by the enums [`Curve2`], [`Curve3`] and
+//!   [`Surface`] (dispatching to the variant).
 //!
 //! The curve arc length still uses a local copy of the Gauss-Legendre
 //! rules; the closest-point iterations keep their own Newton loops, since
@@ -75,6 +79,7 @@ pub mod analytic;
 pub mod basis;
 pub mod conics;
 pub mod fit;
+pub mod geometry;
 
 mod error;
 mod gauss_legendre;
@@ -88,6 +93,7 @@ pub use analytic::{
 };
 pub use conics::{circle_arc, circle_arc_2d, conic_arc, ellipse_arc, ellipse_arc_2d};
 pub use error::GeomError;
+pub use geometry::{Curve2, Curve3, CurveGeom, Surface, SurfaceGeom};
 pub use homogeneous::Homogeneous;
 pub use knots::KnotVector;
 pub use nurbs::{
