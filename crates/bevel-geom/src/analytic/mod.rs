@@ -46,6 +46,16 @@
 //! The normals of the closed surfaces (and of cylinders and cones) point
 //! away from the axis or centre; that of a plane is its frame's `z` axis.
 //!
+//! # Serialization
+//!
+//! Every type serializes its defining data (frame, radii, origin and
+//! direction, ...) under the names of its fields and deserializes through
+//! its constructor, so a corrupt file (a zero radius, a skewed frame, a
+//! half-angle out of range) is refused. Where a constructor normalizes a
+//! direction (lines, the axes of 2D circles and ellipses), the stored
+//! vector must already be within 1e-9 of the normalized one and is kept
+//! as stored, so a value survives a round trip unchanged.
+//!
 //! The domain of a curve, or of a surface in each direction, is a
 //! [`Domain`]. Evaluation accepts any finite parameter: periodic
 //! parameters repeat, unbounded ones extend forever.
@@ -219,6 +229,32 @@ pub(crate) fn unit2(v: Vector2, what: &'static str) -> Result<Vector2, GeomError
         return Err(GeomError::NonFinite);
     }
     v.try_normalize().ok_or(GeomError::InvalidArgument(what))
+}
+
+/// How far a stored direction may be from the one its constructor derives
+/// when deserializing (see the module documentation).
+const STORED_TOLERANCE: f64 = 1e-9;
+
+/// Checks that a stored 3D direction agrees with the derived one.
+pub(crate) fn check_stored3(stored: Vector3, derived: Vector3) -> Result<(), GeomError> {
+    if stored.distance(derived) <= STORED_TOLERANCE {
+        Ok(())
+    } else {
+        Err(GeomError::InvalidArgument(
+            "a stored direction must be a unit vector",
+        ))
+    }
+}
+
+/// Checks that a stored 2D direction agrees with the derived one.
+pub(crate) fn check_stored2(stored: Vector2, derived: Vector2) -> Result<(), GeomError> {
+    if stored.distance(derived) <= STORED_TOLERANCE {
+        Ok(())
+    } else {
+        Err(GeomError::InvalidArgument(
+            "stored axes must be orthonormal unit vectors",
+        ))
+    }
 }
 
 /// Checks that a 3D point is finite.

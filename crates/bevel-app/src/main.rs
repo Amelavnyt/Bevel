@@ -6,8 +6,8 @@
 
 mod app;
 mod geometry_debug;
+mod part;
 mod platform;
-mod scene;
 mod viewport;
 
 fn main() {

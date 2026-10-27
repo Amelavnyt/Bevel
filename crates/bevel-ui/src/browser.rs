@@ -4,11 +4,11 @@
 //! and construction geometry as a tree with visibility toggles.
 
 use crate::icons::Icon;
-use crate::{UiState, theme, widgets};
+use crate::{UiAction, UiState, theme, widgets};
 
 const ROW_ICON: f32 = 16.0;
 
-pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState) {
+pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>) {
     widgets::panel_heading(ui, "BROWSER");
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -51,18 +51,51 @@ pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState) {
                             "No parameters",
                         ),
                         ("sketches", Icon::Folder, "Sketches", "No sketches"),
-                        ("bodies", Icon::Folder, "Bodies", "No bodies"),
-                        (
-                            "construction",
-                            Icon::Folder,
-                            "Construction",
-                            "No construction geometry",
-                        ),
                     ] {
                         node(ui, id, false, None, icon, name, |ui, _| {
-                            ui.label(egui::RichText::new(empty).italics().color(theme::TEXT_WEAK));
+                            empty_note(ui, empty);
                         });
                     }
+                    let bodies = &mut state.bodies;
+                    node(ui, "bodies", true, None, Icon::Folder, "Bodies", |ui, _| {
+                        if bodies.is_empty() {
+                            empty_note(ui, "No bodies");
+                        }
+                        for (index, body) in bodies.iter_mut().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(4.0);
+                                visibility_toggle(ui, &mut body.visible, &body.name);
+                                let tint = if body.visible {
+                                    egui::Color32::WHITE
+                                } else {
+                                    egui::Color32::from_white_alpha(90)
+                                };
+                                ui.add(Icon::Body.image(ROW_ICON).tint(tint));
+                                let color = if body.visible {
+                                    theme::TEXT
+                                } else {
+                                    theme::TEXT_WEAK
+                                };
+                                let label =
+                                    egui::Label::new(egui::RichText::new(&body.name).color(color))
+                                        .sense(egui::Sense::click());
+                                if ui.add(label).clicked() {
+                                    actions.push(UiAction::SelectBody(index));
+                                }
+                            });
+                        }
+                    });
+                    node(
+                        ui,
+                        "construction",
+                        false,
+                        None,
+                        Icon::Folder,
+                        "Construction",
+                        |ui, _| {
+                            empty_note(ui, "No construction geometry");
+                        },
+                    );
                 },
             );
         });
@@ -130,4 +163,8 @@ fn visibility_toggle(ui: &mut egui::Ui, visible: &mut bool, name: &str) {
     {
         *visible = !*visible;
     }
+}
+
+fn empty_note(ui: &mut egui::Ui, text: &str) {
+    ui.label(egui::RichText::new(text).italics().color(theme::TEXT_WEAK));
 }

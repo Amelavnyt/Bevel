@@ -13,6 +13,11 @@
 //! [`newton`] iteration and Gauss–Legendre [`quadrature`]. Curves, surfaces
 //! and NURBS evaluation build on these in the "Math & NURBS" phase of the
 //! roadmap.
+//!
+//! [`Interval`], [`Frame3`], [`Aabb2`] and [`Aabb3`] serialize with serde
+//! (glam's vectors as arrays); deserialization re-checks each type's
+//! invariant, so a corrupt file is refused rather than turned into an
+//! invalid value.
 
 pub mod newton;
 pub mod predicates;
@@ -27,7 +32,7 @@ mod interval;
 
 pub use aabb::{Aabb2, Aabb3};
 pub use error::MathError;
-pub use frame::Frame3;
+pub use frame::{FRAME_TOLERANCE, Frame3};
 pub use glam::{DMat2, DMat3, DMat4, DQuat, DVec2, DVec3, DVec4};
 pub use interval::Interval;
 

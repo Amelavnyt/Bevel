@@ -3,6 +3,7 @@
 //! [`SurfaceGeom`] and the surface enum [`Surface`].
 
 use bevel_math::{Aabb3, DMat4, Interval, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::{Curve3, CurveGeom, restriction};
 use crate::analytic::transform::check_invertible4;
@@ -153,7 +154,10 @@ pub trait SurfaceGeom {
 }
 
 /// A surface: analytic or NURBS.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// Serialized externally tagged (`{ "Plane": { .. } }`); each variant
+/// re-validates on deserialization.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Surface {
     /// A plane.
     Plane(Plane),

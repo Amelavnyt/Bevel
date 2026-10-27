@@ -127,13 +127,22 @@ pub const TOOLS: &[Tool] = &[
     tool("Offset Plane", Construct, Icon::Plane, None, true, EXTRUDE, "Create a reference plane offset from a plane or face"),
     tool("Axis", Construct, Icon::Axis, None, true, EXTRUDE, "Create a reference axis"),
     tool("Point", Construct, Icon::Point, None, false, EXTRUDE, "Create a reference point"),
-    tool("Measure", Inspect, Icon::Measure, Some("M"), true, INSPECT, "Measure distances, angles and radii"),
+    tool("Measure", Inspect, Icon::Measure, Some("M"), true, INSPECT, "Measure the area, length, volume and centre of mass of the selection"),
     tool("Section Analysis", Inspect, Icon::Section, None, true, INSPECT, "Cut the view with a plane to look inside"),
     tool("Mass Properties", Inspect, Icon::Mass, None, false, INSPECT, "Volume, area, centre of mass and inertia"),
     tool("Insert STEP", Insert, Icon::Insert, None, true, STEP, "Import bodies from a STEP file"),
     tool("Run Script", Utilities, Icon::ScriptRun, None, true, SCRIPTING, "Run a Rhai script or macro"),
     tool("Script Editor", Utilities, Icon::ScriptEditor, None, false, SCRIPTING, "Write and debug scripts"),
 ];
+
+/// Name of the Measure tool, which works today (distances and angles
+/// between selections arrive in Phase 7).
+pub const MEASURE: &str = "Measure";
+
+/// Whether `tool` can be used now.
+pub fn is_available(tool: &Tool) -> bool {
+    tool.name == MEASURE
+}
 
 /// The tools of one group, in menu order.
 pub fn in_group(group: ToolGroup) -> impl Iterator<Item = &'static Tool> {

@@ -15,19 +15,21 @@
 //! `t = 0`.
 
 use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Frame3, Interval, Point2, Point3, Vector2, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedCurve, ParamMap, ellipse_arc_axes_2d};
 
 use super::{
     Domain, FULL_TURN, check_frame, check_point2, check_point3, check_radius, check_range,
-    derivative_count, sinusoid_extrema, trig_derivative, unit2, unit3, wrap_angle,
+    check_stored2, derivative_count, sinusoid_extrema, trig_derivative, unit2, unit3, wrap_angle,
 };
 use crate::{ClosestPoint, GeomError, NurbsCurve, NurbsCurve2, NurbsCurve3, circle_arc};
 
 /// A circle in the plane with its own axes: `C(t) = center + radius
 /// (cos(t) x + sin(t) y)` with `y = perp(x)` (counter-clockwise) or
 /// `y = -perp(x)` (clockwise).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Circle2Raw")]
 #[must_use]
 pub struct Circle2 {
     center: Point2,
@@ -36,13 +38,54 @@ pub struct Circle2 {
     radius: f64,
 }
 
+/// The serialized form of a [`Circle2`], checked by [`Circle2::from_axis`].
+#[derive(Deserialize)]
+struct Circle2Raw {
+    center: Point2,
+    x: Vector2,
+    y: Vector2,
+    radius: f64,
+}
+
+impl TryFrom<Circle2Raw> for Circle2 {
+    type Error = GeomError;
+
+    fn try_from(raw: Circle2Raw) -> Result<Self, GeomError> {
+        let ccw = raw.x.perp_dot(raw.y) > 0.0;
+        let c = Self::from_axis(raw.center, raw.x, ccw, raw.radius)?;
+        check_stored2(raw.x, c.x)?;
+        check_stored2(raw.y, c.y)?;
+        Ok(Self {
+            x: raw.x,
+            y: raw.y,
+            ..c
+        })
+    }
+}
+
 /// A circle in space: `C(t) = o + radius (cos(t) x + sin(t) y)` in the
 /// frame `(o, x, y, z)`, counter-clockwise about `z`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Circle3Raw")]
 #[must_use]
 pub struct Circle3 {
     frame: Frame3,
     radius: f64,
+}
+
+/// The serialized form of a [`Circle3`], checked by [`Circle3::new`].
+#[derive(Deserialize)]
+struct Circle3Raw {
+    frame: Frame3,
+    radius: f64,
+}
+
+impl TryFrom<Circle3Raw> for Circle3 {
+    type Error = GeomError;
+
+    fn try_from(raw: Circle3Raw) -> Result<Self, GeomError> {
+        Self::new(raw.frame, raw.radius)
+    }
 }
 
 impl Circle2 {

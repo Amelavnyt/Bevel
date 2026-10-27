@@ -76,6 +76,11 @@
 //! the book's convergence tests and the distance-decreasing step control
 //! differ from the residual-based iteration in `bevel_math::newton`.
 //!
+//! - Serialization: every curve and surface type, [`KnotVector`] and
+//!   [`ParamMap`] serialize with serde and deserialize through their
+//!   constructors, so a corrupt file is refused rather than turned into an
+//!   invalid object (see [`analytic`] and the NURBS types for the formats).
+//!
 //! Next: curve-curve, curve-surface and surface-surface intersections for
 //! booleans.
 

@@ -6,7 +6,7 @@ Rust snippets below that define types are planned designs, not code that exists 
 
 ## Current state
 
-Phases 0 and 1 are in place: the workspace, the renderer and the application shell on desktop and web; `bevel-math` (intervals, boxes, frames, robust predicates, polynomial roots, Newton iteration, Gauss–Legendre quadrature); and `bevel-geom` with NURBS curves and surfaces and their core algorithms, exact conics and swept surfaces, curve and surface fitting with lofts, analytic curves and surfaces with exact NURBS conversions, and the `Curve2`/`Curve3`/`Surface` enums with the `CurveGeom`/`SurfaceGeom` traits. View > Geometry Debug shows sample geometry. Everything from the kernel up (topology, sketching, timeline, model, document, I/O, scripting) is still stubs and is described here as the target design. See [ROADMAP.md](ROADMAP.md) for what comes next.
+Phases 0 and 1 are in place: the workspace, the renderer and the application shell on desktop and web; `bevel-math` (intervals, boxes, frames, robust predicates, polynomial roots, Newton iteration, Gauss–Legendre quadrature); and `bevel-geom` with NURBS curves and surfaces and their core algorithms, exact conics and swept surfaces, curve and surface fitting with lofts, analytic curves and surfaces with exact NURBS conversions, and the `Curve2`/`Curve3`/`Surface` enums with the `CurveGeom`/`SurfaceGeom` traits. View > Geometry Debug shows sample geometry. Phase 2 adds the B-rep kernel core (`bevel-kernel`: topology, persistent names, builder, validation, serialization, the five primitives, watertight tessellation and mass properties), STL and 3MF export (`bevel-io`), thick edges and GPU picking in the renderer, and an app that shows the primitives as bodies with hover, selection, a Measure dialog and export. Sketching, the timeline, the model, documents, STEP and scripting are still stubs and are described here as the target design. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## Glossary
 
@@ -111,18 +111,21 @@ pub enum Surface { Plane(Plane), Cylinder(Cylinder), Cone(Cone), Sphere(Sphere),
 
 ### bevel-kernel: topology
 
-Planned design:
+As implemented (field names abbreviated; see `bevel-kernel/src/topology.rs`):
 
 ```rust
 // Arena-based B-rep (slotmap). Bodies are immutable values shared via Arc; ops return new bodies.
 pub struct Vertex { point: Point3, tol: f64, name: TopoName }
-pub struct Edge   { curve: Curve3, range: Interval, verts: [VertexKey; 2], tol: f64, name: TopoName }
-pub struct Coedge { edge: EdgeKey, reversed: bool, pcurve: Curve2, loop_: LoopKey }   // half-edge / fin
-pub struct Loop   { coedges: Vec<CoedgeKey> }              // a face's first loop is its outer loop
-pub struct Face   { surface: Surface, reversed: bool, loops: Vec<LoopKey>, name: TopoName }
+pub struct Edge   { curve: Curve3, range: Interval, start: VertexKey, end: VertexKey,
+                    degenerate: bool, tol: f64, name: TopoName }       // runs range.min -> range.max
+pub struct Coedge { edge: EdgeKey, reversed: bool, pcurve: Curve2, loop_: LoopKey } // pcurve shares the edge parameter
+pub struct Loop   { coedges: Vec<CoedgeKey>, face: FaceKey }   // a face's first loop is its outer loop
+pub struct Face   { surface: Surface, reversed: bool, loops: Vec<LoopKey>, shell: ShellKey, name: TopoName }
 pub struct Shell  { faces: Vec<FaceKey>, closed: bool }
-pub struct Solid  { shells: Vec<ShellKey> }                // shells[0] is outer, the rest are voids
+pub struct Body   { /* arenas */ shells: Vec<ShellKey>, kind: BodyKind } // Solid: shells[0] outer, others voids; or Sheet
 ```
+
+Orientation, seams, degenerate edges (poles, apexes) and Euler–Poincaré counting are specified in [KERNEL.md](KERNEL.md) ("Topology conventions"). Bodies serialize in a flat, index-based form and are rebuilt and re-validated on load.
 
 - Euler-operator-style builders and healing utilities (merge vertices within tolerance, fix orientation, compute missing pcurves).
 - `validate(&Body) -> Vec<Issue>` checks closed 2-manifold shells, consistent orientation, loop closure, pcurve and 3D curve agreement, vertices on their edges, Euler-Poincare and, in debug and tests only, absence of self-intersections.
@@ -157,7 +160,7 @@ Per face in parameter space. Each edge is discretized once and shared by both ad
 
 ### Mass properties and measurement
 
-Volume, area, centre of mass and the inertia tensor come from Gauss quadrature over trimmed faces, cross-checked against tessellation. Measurement covers distances, angles, radii and the minimum distance between any two entities.
+Volume, area, centre of mass and the inertia tensor come from Gauss quadrature over trimmed faces, cross-checked against tessellation. `face_area` and `edge_length` measure single faces (quadrature over the face's triangulation, mapped through the exact surface) and edges (adaptive quadrature of the curve speed). Measurement will cover distances, angles, radii and the minimum distance between any two entities.
 
 ## Sketching
 
@@ -341,6 +344,7 @@ This describes what the code does today.
 - **Hand-off to egui.** `bevel-app` (`viewport.rs`) calls the renderer each frame with the viewport size in pixels and the camera, then registers the resolved texture with egui's wgpu renderer (`register_native_texture`). When the targets are recreated, for example after a resize, the existing egui texture id is updated in place (`update_egui_texture_from_wgpu_texture`). The renderer clamps target edges to 8192 px.
 - **World space.** Z-up, right-handed, in millimetres, with the ground grid in the XY plane. CPU-side camera math is `f64`; values are converted to `f32` only when written to GPU buffers.
 - **Depth.** Reverse-Z (1 at the near plane, 0 at infinity) with an infinite far plane for perspective projection; see [ADR-0013](DECISIONS.md#adr-0013-z-up-world-and-reverse-z-depth).
+- **Ids, edges and picking.** Meshes carry a face id per vertex and line sets an edge id per segment (0 = not pickable). B-rep edges are drawn as screen-space thick lines: one instance per segment, expanded in the vertex shader to a quad of the given pixel width with half-width end caps, pulled slightly towards the camera so edges win against their faces. `set_highlight(hovered, selected)` tints hovered and selected ids in the shaders (up to 64 selected ids, in a uniform array that also works on WebGL2). `request_pick(pixel)` renders an id pass into an `R32Uint` target (edges drawn 6 px wider so they are easy to hit) only when a pick is pending, copies the one pixel into a mappable buffer and reads it back asynchronously; `poll_pick()` returns the result a frame or two later without ever blocking. See [ADR-0017](DECISIONS.md#adr-0017-picking-through-an-id-buffer-read-back-asynchronously).
 - **Camera.** A turntable camera orbiting a target point: the eye sits at `target + distance * dir(yaw, pitch)`, with pitch clamped just short of the poles. Orbit is right-drag or Shift+middle-drag; pan is middle-drag or Shift+right-drag; zoom is toward the cursor with the wheel or a pinch. Home is Fit All. The View menu toggles between perspective and orthographic projection; the orthographic view height matches what the perspective view shows at the target distance, so switching keeps the framing.
 
 ## App and UI (bevel-app, bevel-ui)
@@ -355,14 +359,14 @@ The layout is dark by default and modelled on common parametric CAD tools.
 ├──────────────────────────────────────────────────────────────────────────┤
 │ [icons]   │ [icons] │ [icons]   │ [icons] │ [icon] │ [icon]              │  toolbar
 │ CREATE ▾  │ MODIFY ▾│ CONSTRUCT▾│ INSPECT▾│ INSERT▾│ UTILITIES ▾         │
-├───────────────┬──────────────────────────────────────────┬───────────────┤
-│ BROWSER       │                               view cube  │ PROPERTIES    │
-│ ▾ Untitled    │                                          │ (selection or │
-│   ▸ 👁 Origin  │              3D viewport                 │  feature      │
-│   ▸ Parameters│                                          │  dialog)      │
-│   ▸ Sketches  │ xyz                                      │               │
-│   ▸ Bodies    │        [home fit │ persp ortho │ grid]   │               │
-├───────────────┴──────────────────────────────────────────┴───────────────┤
+├───────────────┬──────────────────────────────────────────────────────────┤
+│ BROWSER       │                                               view cube  │
+│ ▾ Untitled    │                                     ┌─ MEASURE ─── × ┐  │
+│   ▸ 👁 Origin  │              3D viewport            │ (floating tool │  │
+│   ▸ Parameters│                                     │  or feature    │  │
+│   ▸ Sketches  │ xyz                                 │  dialog)       │  │
+│   ▸ Bodies    │        [home fit │ persp ortho │ grid]└───────────────┘  │
+├───────────────┴──────────────────────────────────────────────────────────┤
 │ ⏮ ◀ ▶ ⏭  [Sketch1][Extrude1][Fillet1] ▌ [Hole1][Pattern1]            mm │  timeline
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -384,6 +388,8 @@ There is one design workspace and no workspace tabs. The toolbar groups tools th
 | UTILITIES | Run Script | Script Editor |
 
 The tool list lives in `bevel-ui/src/tools.rs`. Each tool records its group, icon, shortcut, description and the roadmap phase that implements it. Until a tool exists, clicking it shows a notice saying which phase brings it.
+
+There is no permanent properties panel. Tools and features that need input open a small floating dialog over the viewport, with the tool's icon and name in its header and a close button (ADR-0018). Measure is the first: it shows the type and area of a face, the type and length of an edge, the volume, area and centre of mass of a whole body, and totals for several faces or edges, each with a copy button and a precision setting. M or the Measure tool toggles it.
 
 Sketching and inspection are tools, not modes the user switches into. Create Sketch is the first CREATE tool. While a sketch is open, the toolbar shows the sketch tools (line, arc, circle, rectangle, spline, dimension, constraints, trim, extend, offset, ...) and Finish Sketch, and the bottom bar shows the sketch's timeline. Finishing the sketch brings both back. Measure and Section Analysis work alongside modeling.
 

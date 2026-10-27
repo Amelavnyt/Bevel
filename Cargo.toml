@@ -28,15 +28,15 @@ bevel-script = { path = "crates/bevel-script" }
 bevel-ui = { path = "crates/bevel-ui" }
 
 # Math and geometry
-glam = "0.34.1"
+glam = { version = "0.34.1", features = ["serde"] }
 nalgebra = "0.35.0"
 robust = "1.2.0"
 spade = "2.15.1"
-slotmap = "1.1.1"
+slotmap = { version = "1.1.1", features = ["serde"] }
 
 # Serialization and storage
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 ron = "0.12.2"
 blake3 = { version = "1.8.7", features = ["pure"] }
 zip = { version = "9.1.2", default-features = false, features = ["deflate"] }
@@ -61,6 +61,7 @@ rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] 
 
 # Web platform
 wasm-bindgen-futures = "0.4.79"
+web-sys = "0.3.106"
 
 # Testing
 proptest = "1.12.0"

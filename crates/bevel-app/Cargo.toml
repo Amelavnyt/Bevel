@@ -34,8 +34,14 @@ egui.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[dev-dependencies]
+slotmap.workspace = true
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 anyhow.workspace = true
+rfd.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures.workspace = true
+# Downloads need Blob, Url and anchor elements, which eframe does not enable.
+web-sys = { workspace = true, features = ["Blob", "BlobPropertyBag", "HtmlAnchorElement", "Url"] }

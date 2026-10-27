@@ -2,11 +2,21 @@
 
 //! Closed intervals on the real line.
 
+use serde::{Deserialize, Serialize};
+
+use crate::MathError;
+
 /// A closed interval `[min, max]` with `min <= max`.
 ///
 /// Used for curve and surface parameter ranges and as search bounds in
 /// root finding.
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// Serialized as `{ "min": .., "max": .. }`. Deserialization rejects NaN
+/// ends and `min > max`, so a corrupt file cannot produce an interval that
+/// breaks the invariant (the fields are public, so code can still build one
+/// by hand).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "IntervalRaw")]
 pub struct Interval {
     /// Lower end.
     pub min: f64,
@@ -105,8 +115,42 @@ impl Interval {
     }
 }
 
+/// The serialized form of an [`Interval`], checked before it becomes one.
+#[derive(Deserialize)]
+struct IntervalRaw {
+    min: f64,
+    max: f64,
+}
+
+impl TryFrom<IntervalRaw> for Interval {
+    type Error = MathError;
+
+    fn try_from(raw: IntervalRaw) -> Result<Self, MathError> {
+        if raw.min.is_nan() || raw.max.is_nan() {
+            return Err(MathError::InvalidInput("an interval end is NaN"));
+        }
+        if raw.min > raw.max {
+            return Err(MathError::InvalidInput("an interval must have min <= max"));
+        }
+        Ok(Self {
+            min: raw.min,
+            max: raw.max,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn serde_round_trip_and_rejects_reversed_ends() {
+        let i = Interval::new(-1.5, 2.25);
+        let json = serde_json::to_string(&i).unwrap();
+        assert_eq!(json, r#"{"min":-1.5,"max":2.25}"#);
+        assert_eq!(serde_json::from_str::<Interval>(&json).unwrap(), i);
+        assert!(serde_json::from_str::<Interval>(r#"{"min":2.0,"max":1.0}"#).is_err());
+        assert!(serde_json::from_str::<Interval>(r#"{"min":2.0}"#).is_err());
+    }
 
     #[test]
     fn nan_end_is_not_swallowed() {

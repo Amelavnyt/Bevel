@@ -37,3 +37,27 @@ fn try_run() -> anyhow::Result<()> {
     )
     .map_err(|err| anyhow::anyhow!("failed to start the window: {err}"))
 }
+
+/// Asks where to save `bytes` (suggesting `file_name`, filtered to
+/// `extension`) and writes them there.
+///
+/// # Errors
+///
+/// A message describing why the file could not be written.
+pub fn save_file(
+    file_name: &str,
+    extension: &str,
+    description: &str,
+    bytes: &[u8],
+) -> Result<super::SaveOutcome, String> {
+    let Some(path) = rfd::FileDialog::new()
+        .set_file_name(file_name)
+        .add_filter(description, &[extension])
+        .save_file()
+    else {
+        return Ok(super::SaveOutcome::Cancelled);
+    };
+    std::fs::write(&path, bytes)
+        .map_err(|err| format!("could not write {}: {err}", path.display()))?;
+    Ok(super::SaveOutcome::Saved(path.display().to_string()))
+}

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::{Point2, Point3, Vector2, Vector3};
+use serde::{Deserialize, Serialize};
+
+use crate::{MathError, Point2, Point3, Vector2, Vector3};
 
 /// An axis-aligned bounding box in 3D.
 ///
 /// An empty box (no points added) has `min > max` on every axis; it is the
 /// identity for [`Aabb3::union`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// Serialized as `{ "min": [x, y, z], "max": [x, y, z] }`; deserialization
+/// rejects NaN coordinates. Formats without infinities (JSON) cannot hold
+/// the empty box.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Aabb3Raw")]
 pub struct Aabb3 {
     /// Corner with the smallest coordinates.
     pub min: Point3,
@@ -92,7 +99,12 @@ impl Aabb3 {
 ///
 /// An empty box (no points added) has `min > max` on both axes; it is the
 /// identity for [`Aabb2::union`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// Serialized as `{ "min": [x, y], "max": [x, y] }`; deserialization
+/// rejects NaN coordinates. Formats without infinities (JSON) cannot hold
+/// the empty box.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Aabb2Raw")]
 pub struct Aabb2 {
     /// Corner with the smallest coordinates.
     pub min: Point2,
@@ -169,9 +181,63 @@ impl Aabb2 {
     }
 }
 
+/// The serialized form of an [`Aabb3`], checked before it becomes one.
+#[derive(Deserialize)]
+struct Aabb3Raw {
+    min: Point3,
+    max: Point3,
+}
+
+impl TryFrom<Aabb3Raw> for Aabb3 {
+    type Error = MathError;
+
+    fn try_from(raw: Aabb3Raw) -> Result<Self, MathError> {
+        if raw.min.is_nan() || raw.max.is_nan() {
+            return Err(MathError::InvalidInput("a box corner is NaN"));
+        }
+        Ok(Self {
+            min: raw.min,
+            max: raw.max,
+        })
+    }
+}
+
+/// The serialized form of an [`Aabb2`], checked before it becomes one.
+#[derive(Deserialize)]
+struct Aabb2Raw {
+    min: Point2,
+    max: Point2,
+}
+
+impl TryFrom<Aabb2Raw> for Aabb2 {
+    type Error = MathError;
+
+    fn try_from(raw: Aabb2Raw) -> Result<Self, MathError> {
+        if raw.min.is_nan() || raw.max.is_nan() {
+            return Err(MathError::InvalidInput("a box corner is NaN"));
+        }
+        Ok(Self {
+            min: raw.min,
+            max: raw.max,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boxes_round_trip_through_serde() {
+        let b = Aabb3::new(Point3::new(-1.0, 0.5, 2.0), Point3::new(3.0, 4.0, 5.0));
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(json, r#"{"min":[-1.0,0.5,2.0],"max":[3.0,4.0,5.0]}"#);
+        assert_eq!(serde_json::from_str::<Aabb3>(&json).unwrap(), b);
+        let c = Aabb2::new(Point2::new(-1.0, 0.5), Point2::new(3.0, 4.0));
+        let json = serde_json::to_string(&c).unwrap();
+        assert_eq!(serde_json::from_str::<Aabb2>(&json).unwrap(), c);
+        assert!(serde_json::from_str::<Aabb2>(r#"{"min":[0.0],"max":[1.0,1.0]}"#).is_err());
+    }
 
     #[test]
     fn empty_box_is_identity_for_union() {

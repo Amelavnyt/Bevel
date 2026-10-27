@@ -8,6 +8,7 @@
 //! principal curvatures are zero, with `dir1 = x` and `dir2 = y`.
 
 use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedSurface, ParamMap, check_open_range};
 use super::{Domain, Line3, check_frame, check_point3, check_range, unit3};
@@ -17,10 +18,25 @@ use crate::{
 
 /// An unbounded plane: `S(u, v) = o + u x + v y` in the frame `(o, x, y,
 /// z)`, with normal `z`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "PlaneRaw")]
 #[must_use]
 pub struct Plane {
     frame: Frame3,
+}
+
+/// The serialized form of a [`Plane`], checked by [`Plane::new`].
+#[derive(Deserialize)]
+struct PlaneRaw {
+    frame: Frame3,
+}
+
+impl TryFrom<PlaneRaw> for Plane {
+    type Error = GeomError;
+
+    fn try_from(raw: PlaneRaw) -> Result<Self, GeomError> {
+        Self::new(raw.frame)
+    }
 }
 
 impl Plane {

@@ -41,6 +41,7 @@
 //! and cones, both directions of planes) are the identity.
 
 use bevel_math::{Frame3, Interval, Point2, Vector2};
+use serde::{Deserialize, Serialize};
 
 use super::check_range;
 use crate::conics::unit_arc;
@@ -50,7 +51,11 @@ use crate::{
 
 /// How the parameter of a NURBS form relates to the analytic parameter it
 /// was made from (see the module documentation).
-#[derive(Clone, Debug, PartialEq)]
+///
+/// Deserialization requires the breaks of an arc to be finite and strictly
+/// increasing, with at least two of them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ParamMapRaw")]
 pub enum ParamMap {
     /// The NURBS parameter is the analytic one.
     Identity,
@@ -61,6 +66,34 @@ pub enum ParamMap {
         /// The segment boundaries, where both parameters are equal.
         breaks: Vec<f64>,
     },
+}
+
+/// The serialized form of a [`ParamMap`], checked before it becomes one.
+#[derive(Deserialize)]
+enum ParamMapRaw {
+    Identity,
+    Arc { breaks: Vec<f64> },
+}
+
+impl TryFrom<ParamMapRaw> for ParamMap {
+    type Error = GeomError;
+
+    fn try_from(raw: ParamMapRaw) -> Result<Self, GeomError> {
+        match raw {
+            ParamMapRaw::Identity => Ok(Self::Identity),
+            ParamMapRaw::Arc { breaks } => {
+                if breaks.iter().any(|b| !b.is_finite()) {
+                    return Err(GeomError::NonFinite);
+                }
+                if breaks.len() < 2 || breaks.windows(2).any(|w| w[1] <= w[0]) {
+                    return Err(GeomError::InvalidArgument(
+                        "the breaks of an arc map must be at least two increasing values",
+                    ));
+                }
+                Ok(Self::Arc { breaks })
+            }
+        }
+    }
 }
 
 impl ParamMap {

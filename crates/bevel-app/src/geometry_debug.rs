@@ -105,7 +105,7 @@ fn curve_lines(curve: &NurbsCurve3, segments: usize, color: [f32; 4]) -> LineSet
     let positions = (0..segments)
         .flat_map(|i| [to_f32(at(i)), to_f32(at(i + 1))])
         .collect();
-    LineSet { positions, color }
+    line_set(positions, color)
 }
 
 /// Straight segments between consecutive points.
@@ -114,7 +114,7 @@ fn polyline(points: &[Point3], color: [f32; 4]) -> LineSet {
         .windows(2)
         .flat_map(|w| [to_f32(w[0]), to_f32(w[1])])
         .collect();
-    LineSet { positions, color }
+    line_set(positions, color)
 }
 
 /// A small three-axis cross at each point.
@@ -127,7 +127,17 @@ fn markers(points: &[Point3], size: f64, color: [f32; 4]) -> LineSet {
                 .flat_map(move |d| [to_f32(p - size * d), to_f32(p + size * d)])
         })
         .collect();
-    LineSet { positions, color }
+    line_set(positions, color)
+}
+
+/// A line set of unpickable segments (id 0) at the default width.
+fn line_set(positions: Vec<[f32; 3]>, color: [f32; 4]) -> LineSet {
+    LineSet {
+        ids: vec![0; positions.len() / 2],
+        positions,
+        color,
+        ..LineSet::default()
+    }
 }
 
 /// The surface sampled on a `nu` x `nv` grid of quads, uniform in its
@@ -156,6 +166,7 @@ fn surface_mesh(surface: &NurbsSurface, nu: usize, nv: usize, color: [f32; 4]) -
             mesh.indices.extend([a, b, c, a, c, d]);
         }
     }
+    mesh.ids = vec![0; mesh.positions.len()];
     mesh
 }
 

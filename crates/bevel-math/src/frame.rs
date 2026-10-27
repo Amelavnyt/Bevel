@@ -2,17 +2,30 @@
 
 //! Orthonormal coordinate frames in 3D.
 
+use serde::{Deserialize, Serialize};
+
 use crate::{DMat3, DMat4, MathError, Point3, Vector3};
 
 /// Vectors shorter than this have no usable direction.
 const MIN_LENGTH: f64 = 1e-12;
+
+/// How far a frame may be from orthonormal and right-handed for
+/// [`Frame3::is_valid`]: the deviation of each axis length from 1, of each
+/// dot product from 0 and of `x × y` from `z`.
+pub const FRAME_TOLERANCE: f64 = 1e-9;
 
 /// A right-handed orthonormal coordinate frame: an origin and three
 /// mutually perpendicular unit axes with `x × y = z`.
 ///
 /// "Local" coordinates are measured along the frame's axes from its origin;
 /// "world" coordinates are model-space coordinates.
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// Serialized as `{ "origin": [x, y, z], "x": [..], "y": [..], "z": [..] }`.
+/// Deserialization requires [`Frame3::is_valid`], so a corrupt file cannot
+/// produce a skewed or left-handed frame (the fields are public, so code
+/// can still build one by hand; the constructors cannot).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Frame3Raw")]
 pub struct Frame3 {
     /// Origin of the frame in world coordinates.
     pub origin: Point3,
@@ -72,6 +85,23 @@ impl Frame3 {
         Ok(Self { origin, x, y, z })
     }
 
+    /// Returns `true` if every component is finite and the axes are
+    /// orthonormal and right-handed to [`FRAME_TOLERANCE`]: unit lengths,
+    /// `x · y`, `y · z` and `z · x` near zero, and `x × y` near `z`.
+    pub fn is_valid(&self) -> bool {
+        let Self { origin, x, y, z } = *self;
+        let finite = origin.is_finite() && x.is_finite() && y.is_finite() && z.is_finite();
+        let unit = |v: Vector3| (v.length() - 1.0).abs() <= FRAME_TOLERANCE;
+        finite
+            && unit(x)
+            && unit(y)
+            && unit(z)
+            && x.dot(y).abs() <= FRAME_TOLERANCE
+            && y.dot(z).abs() <= FRAME_TOLERANCE
+            && z.dot(x).abs() <= FRAME_TOLERANCE
+            && (x.cross(y) - z).length() <= FRAME_TOLERANCE
+    }
+
     /// World coordinates of the point with local coordinates `local`.
     pub fn to_world(&self, local: Point3) -> Point3 {
         self.origin + self.vector_to_world(local)
@@ -113,6 +143,35 @@ impl Frame3 {
             rot.z_axis.extend(0.0),
             t.extend(1.0),
         )
+    }
+}
+
+/// The serialized form of a [`Frame3`], checked before it becomes one.
+#[derive(Deserialize)]
+struct Frame3Raw {
+    origin: Point3,
+    x: Vector3,
+    y: Vector3,
+    z: Vector3,
+}
+
+impl TryFrom<Frame3Raw> for Frame3 {
+    type Error = MathError;
+
+    fn try_from(raw: Frame3Raw) -> Result<Self, MathError> {
+        let frame = Self {
+            origin: raw.origin,
+            x: raw.x,
+            y: raw.y,
+            z: raw.z,
+        };
+        if frame.is_valid() {
+            Ok(frame)
+        } else {
+            Err(MathError::InvalidInput(
+                "a frame must be finite, orthonormal and right-handed",
+            ))
+        }
     }
 }
 
@@ -204,6 +263,31 @@ mod tests {
         assert_close(f.inverse_matrix().transform_point3(p), f.to_local(p), 1e-12);
         let id = f.matrix() * f.inverse_matrix();
         assert!(id.abs_diff_eq(DMat4::IDENTITY, 1e-12));
+    }
+
+    #[test]
+    fn validity_and_serde() {
+        let f =
+            Frame3::from_normal(Point3::new(1.0, 2.0, 3.0), Vector3::new(1.0, 2.0, 2.0)).unwrap();
+        assert!(f.is_valid() && Frame3::WORLD.is_valid());
+        let json = serde_json::to_string(&Frame3::WORLD).unwrap();
+        assert_eq!(
+            json,
+            r#"{"origin":[0.0,0.0,0.0],"x":[1.0,0.0,0.0],"y":[0.0,1.0,0.0],"z":[0.0,0.0,1.0]}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<Frame3>(&json).unwrap(),
+            Frame3::WORLD
+        );
+        let back: Frame3 = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(back, f);
+        // Left-handed, skewed and scaled frames are refused.
+        let left = r#"{"origin":[0,0,0],"x":[1,0,0],"y":[0,1,0],"z":[0,0,-1]}"#;
+        let skew = r#"{"origin":[0,0,0],"x":[1,0,0],"y":[0.1,1,0],"z":[0,0,1]}"#;
+        let scaled = r#"{"origin":[0,0,0],"x":[2,0,0],"y":[0,1,0],"z":[0,0,1]}"#;
+        for bad in [left, skew, scaled] {
+            assert!(serde_json::from_str::<Frame3>(bad).is_err(), "{bad}");
+        }
     }
 
     proptest! {

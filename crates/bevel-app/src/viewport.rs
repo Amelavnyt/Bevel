@@ -4,50 +4,40 @@
 //! and keeps that texture registered with egui's wgpu renderer.
 
 use bevel_math::Aabb3;
-use bevel_render::{Camera, ViewportOverlays, ViewportRenderer};
+use bevel_render::{Camera, LineSet, PickResult, TriangleMesh, ViewportOverlays, ViewportRenderer};
 use eframe::egui_wgpu::{self, wgpu};
 
 pub struct Viewport {
     renderer: ViewportRenderer,
     texture: Option<egui::TextureId>,
-    /// Whether the geometry debug scene is shown instead of the test cube.
-    geometry_debug: bool,
 }
 
 impl Viewport {
     pub fn new(render_state: &egui_wgpu::RenderState) -> Self {
-        let mut renderer = ViewportRenderer::new(&render_state.device, &render_state.adapter);
-        let (meshes, lines) = crate::scene::test_scene();
-        renderer.set_scene(&render_state.device, &meshes, &lines);
         Self {
-            renderer,
+            renderer: ViewportRenderer::new(&render_state.device, &render_state.adapter),
             texture: None,
-            geometry_debug: false,
         }
     }
 
-    /// Shows the geometry debug scene (`on`) or the test cube. Returns
-    /// whether the scene changed, so the caller can reframe the view.
-    pub fn show_geometry_debug(
-        &mut self,
-        device: &wgpu::Device,
-        on: bool,
-    ) -> Result<bool, bevel_geom::GeomError> {
-        if on == self.geometry_debug {
-            return Ok(false);
-        }
-        let (meshes, lines) = if on {
-            crate::geometry_debug::scene()?
-        } else {
-            crate::scene::test_scene()
-        };
-        self.renderer.set_scene(device, &meshes, &lines);
-        self.geometry_debug = on;
-        Ok(true)
+    pub fn set_scene(&mut self, device: &wgpu::Device, meshes: &[TriangleMesh], lines: &[LineSet]) {
+        self.renderer.set_scene(device, meshes, lines);
     }
 
     pub fn set_overlays(&mut self, overlays: ViewportOverlays) {
         self.renderer.set_overlays(overlays);
+    }
+
+    pub fn set_highlight(&mut self, hovered: Option<u32>, selected: &[u32]) {
+        self.renderer.set_highlight(hovered, selected);
+    }
+
+    pub fn request_pick(&mut self, pixel: [u32; 2]) {
+        self.renderer.request_pick(pixel);
+    }
+
+    pub fn poll_pick(&mut self) -> Option<PickResult> {
+        self.renderer.poll_pick()
     }
 
     pub fn scene_bounds(&self) -> Aabb3 {

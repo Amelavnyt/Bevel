@@ -65,3 +65,41 @@ fn show_status(document: &web_sys::Document, message: &str) {
         status.set_text_content(Some(message));
     }
 }
+
+/// Offers `bytes` as a browser download named `file_name`.
+///
+/// # Errors
+///
+/// A message if the browser refused to create the download.
+pub fn save_file(
+    file_name: &str,
+    _extension: &str,
+    _description: &str,
+    bytes: &[u8],
+) -> Result<super::SaveOutcome, String> {
+    let fail = |what: &str| format!("could not start the download: {what}");
+    let array = eframe::wasm_bindgen::JsValue::from(js_sys_bytes(bytes));
+    let parts = eframe::web_sys::js_sys::Array::of1(&array);
+    let options = web_sys::BlobPropertyBag::new();
+    options.set_type("application/octet-stream");
+    let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options)
+        .map_err(|_| fail("blob"))?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(|_| fail("url"))?;
+    let document = web_sys::window()
+        .and_then(|w| w.document())
+        .ok_or_else(|| fail("no document"))?;
+    let anchor = document
+        .create_element("a")
+        .map_err(|_| fail("anchor"))?
+        .dyn_into::<web_sys::HtmlAnchorElement>()
+        .map_err(|_| fail("anchor"))?;
+    anchor.set_href(&url);
+    anchor.set_download(file_name);
+    anchor.click();
+    let _ = web_sys::Url::revoke_object_url(&url);
+    Ok(super::SaveOutcome::Saved(file_name.to_owned()))
+}
+
+fn js_sys_bytes(bytes: &[u8]) -> eframe::web_sys::js_sys::Uint8Array {
+    eframe::web_sys::js_sys::Uint8Array::from(bytes)
+}

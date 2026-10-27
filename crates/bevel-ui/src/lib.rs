@@ -9,7 +9,7 @@
 //! ```text
 //! app bar:  logo  menus  new open save  undo redo   <title>   branch  log
 //! toolbar:  CREATE | MODIFY | CONSTRUCT | INSPECT | INSERT | UTILITIES
-//! browser |          3D viewport (view cube, nav bar)         | properties
+//! browser |   3D viewport (view cube, nav bar, floating tool dialogs)
 //! log (optional)
 //! timeline
 //! ```
@@ -25,7 +25,7 @@ mod appbar;
 mod browser;
 pub mod icons;
 mod log;
-mod properties;
+mod measure;
 pub mod theme;
 mod timeline;
 mod toolbar;
@@ -52,6 +52,78 @@ pub enum UiAction {
     SetProjection(Projection),
     /// Quit the application (desktop only).
     Quit,
+    /// Export the visible bodies to a file.
+    Export(ExportFormat),
+    /// Select a body (by its index in [`UiState::bodies`]).
+    SelectBody(usize),
+}
+
+/// A mesh file format for export.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportFormat {
+    /// Binary STL.
+    Stl,
+    /// 3MF (3D Manufacturing Format).
+    ThreeMf,
+}
+
+impl ExportFormat {
+    /// File extension, without the dot.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Stl => "stl",
+            Self::ThreeMf => "3mf",
+        }
+    }
+
+    /// Name for menus and file dialogs.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Stl => "STL",
+            Self::ThreeMf => "3MF",
+        }
+    }
+}
+
+/// A body as the browser shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BodyEntry {
+    /// Display name.
+    pub name: String,
+    /// Whether it is drawn and exported.
+    pub visible: bool,
+}
+
+/// One result in the Measure dialog.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MeasureValue {
+    /// One or more numbers in a unit, e.g. an area or a point.
+    Numbers {
+        /// The values; a point has three.
+        values: Vec<f64>,
+        /// Unit symbol, e.g. "mm²".
+        unit: &'static str,
+    },
+    /// A description, e.g. the type of a surface.
+    Text(String),
+}
+
+/// A labelled result in the Measure dialog.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Measurement {
+    /// What was measured, e.g. "Area".
+    pub label: String,
+    /// The result.
+    pub value: MeasureValue,
+}
+
+/// What the Measure dialog shows for the current selection.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SelectionInfo {
+    /// What is selected, e.g. "Box · Top face".
+    pub title: String,
+    /// The results.
+    pub measurements: Vec<Measurement>,
 }
 
 /// A short message shown over the viewport.
@@ -72,8 +144,6 @@ pub struct Notice {
 pub struct UiState {
     /// Whether the log panel is open.
     pub show_log: bool,
-    /// Whether the properties panel is open.
-    pub show_properties: bool,
     /// Whether the About window is open.
     pub show_about: bool,
     /// Whether the viewport controls window is open.
@@ -93,6 +163,14 @@ pub struct UiState {
     pub can_quit: bool,
     /// Message shown over the viewport, if any.
     pub notice: Option<Notice>,
+    /// The part's bodies, in browser order; the app keeps this in sync.
+    pub bodies: Vec<BodyEntry>,
+    /// What is selected, for the Measure dialog; `None` when nothing is.
+    pub selection: Option<SelectionInfo>,
+    /// Whether the Measure dialog is open.
+    pub measure_open: bool,
+    /// Decimal places the Measure dialog shows.
+    pub measure_decimals: usize,
     /// Current time, for timing notices; updated every frame.
     now: f64,
 }
@@ -101,7 +179,8 @@ impl Default for UiState {
     fn default() -> Self {
         Self {
             show_log: false,
-            show_properties: true,
+            measure_open: false,
+            measure_decimals: 2,
             show_about: false,
             show_controls: false,
             show_grid: true,
@@ -111,6 +190,8 @@ impl Default for UiState {
             branch: "main".to_owned(),
             can_quit: true,
             notice: None,
+            bodies: Vec::new(),
+            selection: None,
             now: 0.0,
         }
     }
@@ -123,6 +204,16 @@ impl UiState {
             text: text.into(),
             until: self.now + NOTICE_SECONDS,
         });
+    }
+
+    /// Runs a toolbar tool: opens it if it exists, otherwise says when it
+    /// arrives.
+    fn activate(&mut self, tool: &tools::Tool) {
+        if tool.name == tools::MEASURE {
+            self.measure_open = true;
+        } else {
+            self.notify_unavailable(tool.name, tool.phase);
+        }
     }
 
     /// Tells the user that `name` doesn't exist yet and when it arrives.
@@ -185,24 +276,24 @@ pub fn workbench(
         .frame(side_frame)
         .resizable(true)
         .default_size(230.0)
-        .show(ui, |ui| browser::show(ui, state));
-    if state.show_properties {
-        egui::Panel::right("properties")
-            .frame(side_frame)
-            .resizable(true)
-            .default_size(260.0)
-            .show(ui, properties::show);
-    }
+        .show(ui, |ui| browser::show(ui, state, &mut actions));
     egui::CentralPanel::no_frame().show(ui, |ui| viewport(ui, state, &mut actions));
 
+    if state.measure_open {
+        measure::show(ui.ctx(), state);
+    }
     if state.show_about {
         about_window(ui.ctx(), &mut state.show_about);
     }
     if state.show_controls {
         controls_window(ui.ctx(), &mut state.show_controls);
     }
+    let typing = ui.ctx().egui_wants_keyboard_input();
     if ui.input(|i| i.key_pressed(egui::Key::Home)) {
         actions.push(UiAction::FitAll);
+    }
+    if !typing && ui.input(|i| i.key_pressed(egui::Key::M)) {
+        state.measure_open = !state.measure_open;
     }
     actions
 }
@@ -240,6 +331,8 @@ fn controls_window(ctx: &egui::Context, open: &mut bool) {
                     ("Zoom", "Scroll wheel or pinch, towards the cursor"),
                     ("Fit all", "Home"),
                     ("Standard views", "Click a face of the view cube"),
+                    ("Select", "Click; Shift + click adds or removes"),
+                    ("Measure", "M"),
                 ] {
                     ui.strong(action);
                     ui.label(how);
@@ -275,7 +368,6 @@ mod tests {
         let harness = harness(&mut state);
         for label in [
             "BROWSER",
-            "PROPERTIES",
             "Untitled",
             "Origin",
             "Create Sketch",
@@ -310,5 +402,71 @@ mod tests {
         let notice = state.notice.expect("clicking a tool shows a notice");
         assert!(notice.text.contains("Extrude"));
         assert!(notice.text.contains("Phase 6"));
+    }
+
+    fn with_bodies() -> UiState {
+        UiState {
+            bodies: vec![
+                BodyEntry {
+                    name: "Box".to_owned(),
+                    visible: true,
+                },
+                BodyEntry {
+                    name: "Torus".to_owned(),
+                    visible: false,
+                },
+            ],
+            ..UiState::default()
+        }
+    }
+
+    #[test]
+    fn clicking_a_body_selects_it() {
+        let mut state = with_bodies();
+        let mut actions = Vec::new();
+        {
+            let log = LogBuffer::default();
+            let mut harness = Harness::builder()
+                .with_size(egui::vec2(1400.0, 900.0))
+                .build_ui(|ui| {
+                    install(ui.ctx());
+                    actions.extend(workbench(ui, &mut state, &log, |_, _, _| {}));
+                });
+            harness.run();
+            harness.get_by_label("Torus").click();
+            harness.run();
+        }
+        assert!(actions.contains(&UiAction::SelectBody(1)));
+    }
+
+    #[test]
+    fn there_is_no_properties_panel() {
+        let mut state = with_bodies();
+        let harness = harness(&mut state);
+        assert!(harness.query_by_label("PROPERTIES").is_none());
+    }
+
+    #[test]
+    fn measure_tool_opens_the_dialog_with_results() {
+        let mut state = with_bodies();
+        state.selection = Some(SelectionInfo {
+            title: "Box · Top face".to_owned(),
+            measurements: vec![Measurement {
+                label: "Area".to_owned(),
+                value: MeasureValue::Numbers {
+                    values: vec![1600.0],
+                    unit: "mm²",
+                },
+            }],
+        });
+        {
+            let mut harness = harness(&mut state);
+            harness.get_by_label("Measure").click();
+            harness.run();
+            harness.get_by_label("MEASURE");
+            harness.get_by_label("Box · Top face");
+            harness.get_by_label("1,600.00 mm²");
+        }
+        assert!(state.measure_open);
     }
 }

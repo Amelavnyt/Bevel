@@ -17,6 +17,13 @@
 //! points each (index `j`, along `v`), stored row by row: point `(i, j)` is
 //! at index `i * count_v + j`.
 //!
+//! # Serialization
+//!
+//! A surface serializes as `{ "degree_u", "degree_v", "knots_u",
+//! "knots_v", "control" }` with the homogeneous control points in the
+//! layout above, and deserializes through [`NurbsSurface::new`], so a
+//! corrupt file is refused.
+//!
 //! # Evaluation
 //!
 //! - [`NurbsSurface::point`] is A4.3 (A3.5 on the homogeneous points, then
@@ -57,6 +64,7 @@ mod swept;
 pub use closest::SurfaceClosestPoint;
 
 use bevel_math::{Aabb3, DVec3, DVec4, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use crate::basis::{basis_funs_raw, ders_basis_funs_raw};
 use crate::knots::check_degree;
@@ -73,7 +81,8 @@ const NORMAL_SINE_TOLERANCE: f64 = 1e-12;
 /// A non-uniform rational B-spline surface in 3D model space.
 ///
 /// See the module documentation for the layout of the control net.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "NurbsSurfaceRaw")]
 #[must_use]
 pub struct NurbsSurface {
     /// Invariant: `1 <= degree_u <= MAX_DEGREE`.
@@ -89,7 +98,33 @@ pub struct NurbsSurface {
     /// knots_u.len() - degree_u - 1` and likewise for `v`.
     control: Vec<DVec4>,
     /// Cached: some weight differs from the first.
+    #[serde(skip)]
     rational: bool,
+}
+
+/// The serialized form of a [`NurbsSurface`], checked by
+/// [`NurbsSurface::new`].
+#[derive(Deserialize)]
+struct NurbsSurfaceRaw {
+    degree_u: usize,
+    degree_v: usize,
+    knots_u: KnotVector,
+    knots_v: KnotVector,
+    control: Vec<DVec4>,
+}
+
+impl TryFrom<NurbsSurfaceRaw> for NurbsSurface {
+    type Error = GeomError;
+
+    fn try_from(raw: NurbsSurfaceRaw) -> Result<Self, GeomError> {
+        Self::new(
+            raw.degree_u,
+            raw.degree_v,
+            raw.knots_u,
+            raw.knots_v,
+            raw.control,
+        )
+    }
 }
 
 /// The principal curvatures and directions of a surface at a point.

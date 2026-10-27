@@ -7,7 +7,75 @@
 //! tessellation, mass properties and persistent topological naming.
 //!
 //! The kernel knows nothing about features, sketches or documents. Callers
-//! pass an opaque `OpTag` so the kernel can name what it creates.
+//! pass an opaque [`OpTag`] so the kernel can name what it creates.
 //!
-//! Status: placeholder; topology and primitives arrive in the
-//! "B-rep & display" phase.
+//! # Status
+//!
+//! Implemented:
+//!
+//! - [`topology`]: the B-rep data structure ([`Body`] and its entities,
+//!   typed slotmap keys, read-only accessors and adjacency queries,
+//!   bounds, Euler-Poincare counts) and its conventions: orientation,
+//!   pcurves sharing the edge parameter, seams on periodic faces,
+//!   degenerate edges at poles and apexes, loop ordering and determinism.
+//! - [`naming`]: persistent names ([`TopoName`], [`Source`], [`Role`]),
+//!   operation [`History`], [`OpOutput`] and [`OpContext`] with its
+//!   tolerance and cancellation token.
+//! - [`builder`]: [`BodyBuilder`], which keeps references consistent at
+//!   every step and validates on [`BodyBuilder::finish`].
+//! - [`validate`](mod@validate): [`validate`](fn@validate) and the [`Issue`]s it reports
+//!   (references, loop closure in 3D and in `(u, v)`, 2-manifold closed
+//!   shells, orientation, pcurve and vertex agreement, seams, degenerate
+//!   edges, Euler-Poincare, unique names).
+//! - [`primitives`]: box, cylinder, sphere, cone and torus with exact
+//!   analytic geometry, outward normals and named faces, edges and
+//!   vertices.
+//! - Serialization: bodies serialize with serde in a flat, index-based
+//!   form and re-validate on deserialization, so a corrupt file never
+//!   produces an invalid body (see "Serialization" on [`Body`]). Names,
+//!   histories and primitive parameters serialize too.
+//! - [`tessellate`](mod@tessellate): [`tessellate`](fn@tessellate) turns a
+//!   body into a [`BodyMesh`] (a [`FaceMesh`] per face, an
+//!   [`EdgePolyline`] per edge) to the chordal and angular tolerances of
+//!   [`TessellationOptions`] (coarse, fine and export presets). Edges are
+//!   discretized once and shared, so meshes of closed shells are
+//!   watertight; faces are triangulated in `(u, v)` by a constrained
+//!   Delaunay triangulation refined adaptively, with exact surface points
+//!   and normals.
+//! - [`mass`]: [`mass_properties`] gives a solid's volume, area, centroid
+//!   and inertia tensor at unit density, with principal moments and axes,
+//!   by the divergence theorem and Gauss quadrature of the exact surface
+//!   integrands over each face's triangulated `(u, v)` domain (curved
+//!   trims included).
+//!
+//! Next: extrude, revolve and booleans.
+
+pub mod builder;
+pub mod mass;
+pub mod naming;
+pub mod primitives;
+pub mod tessellate;
+pub mod topology;
+pub mod validate;
+
+mod error;
+mod serial;
+#[cfg(test)]
+mod tests;
+
+pub use builder::BodyBuilder;
+pub use error::KernelError;
+pub use mass::{MassProperties, edge_length, face_area, mass_properties};
+pub use naming::{
+    EntityKind, History, HistoryEntry, OpContext, OpOutput, OpTag, Role, Source, TopoName,
+};
+pub use primitives::{
+    BoxParams, ConeParams, CylinderParams, SphereParams, TorusParams, box_, cone, cylinder, sphere,
+    torus,
+};
+pub use tessellate::{BodyMesh, EdgePolyline, FaceMesh, TessellationOptions, tessellate};
+pub use topology::{
+    Body, BodyKind, Coedge, CoedgeKey, Edge, EdgeKey, EntityKey, EulerCounts, Face, FaceKey, Loop,
+    LoopKey, Shell, ShellKey, Vertex, VertexKey,
+};
+pub use validate::{Issue, validate};
