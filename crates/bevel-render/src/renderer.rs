@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::pack::{self, HIGHLIGHT_WORDS, LINE_INSTANCE_WORDS, MAX_SELECTED, globals};
-use crate::pipelines::{DEPTH_FORMAT, OUTPUT_FORMAT, Pipelines};
+use crate::pick::{PickResult, Picker};
+use crate::pipelines::{DEPTH_FORMAT, ID_FORMAT, OUTPUT_FORMAT, Pipelines};
 use crate::{Camera, LineSet, Projection, TriangleMesh};
 use bevel_math::{Aabb3, Point3};
 use wgpu::util::DeviceExt as _;
@@ -119,6 +120,17 @@ struct Targets {
     msaa: Option<wgpu::TextureView>,
     output: wgpu::TextureView,
     depth: wgpu::TextureView,
+    /// The id buffer, created the first time a pick needs it.
+    ids: Option<IdTargets>,
+}
+
+/// The targets of the id pass: a non-multisampled id texture with its own
+/// depth buffer, the size of the viewport.
+struct IdTargets {
+    /// Kept for the texel copy into the readback buffer.
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    depth: wgpu::TextureView,
 }
 
 struct GpuMesh {
@@ -150,6 +162,7 @@ pub struct ViewportRenderer {
     axis_lines: wgpu::Buffer,
     scene_bounds: Aabb3,
     targets: Option<Targets>,
+    picker: Picker,
 }
 
 impl ViewportRenderer {
@@ -227,6 +240,7 @@ impl ViewportRenderer {
             axis_lines,
             scene_bounds: Aabb3::EMPTY,
             targets: None,
+            picker: Picker::new(device),
         }
     }
 
@@ -255,6 +269,28 @@ impl ViewportRenderer {
             );
         }
         self.highlight = words;
+    }
+
+    /// Asks which id is under `pixel` (viewport pixels from the top left,
+    /// in the size passed to [`ViewportRenderer::render`]).
+    ///
+    /// The id pass is rendered as part of the next `render` call, and
+    /// [`ViewportRenderer::poll_pick`] returns the result a little later.
+    /// Only one pick is in flight at a time: a newer request replaces an
+    /// older one that has not been rendered yet, and a request made while a
+    /// readback is still in flight waits until that result has been
+    /// collected. A pixel outside the viewport reads the nearest edge pixel.
+    pub fn request_pick(&mut self, pixel: [u32; 2]) {
+        self.picker.request(pixel);
+    }
+
+    /// The result of the pick in flight, once it is ready. Never blocks;
+    /// returns `None` until the GPU has finished, so call it every frame.
+    ///
+    /// On native targets this polls the device without waiting. On the web
+    /// the browser completes the readback by itself.
+    pub fn poll_pick(&mut self) -> Option<PickResult> {
+        self.picker.poll()
     }
 
     /// Bounding box of everything set with [`ViewportRenderer::set_scene`].
@@ -343,10 +379,15 @@ impl ViewportRenderer {
         camera: &Camera,
     ) -> RenderOutput<'_> {
         let size = size.map(|s| s.clamp(1, MAX_TARGET_SIZE));
-        let (targets, recreated) = match self.targets.take() {
+        let (mut targets, recreated) = match self.targets.take() {
             Some(targets) if targets.size == size => (targets, false),
             _ => (self.create_targets(device, size), true),
         };
+        // The id pass costs a full extra pass, so it only runs for a pick.
+        let picking = self.picker.wants_pass();
+        if picking && targets.ids.is_none() {
+            targets.ids = Some(Self::create_id_targets(device, size));
+        }
 
         let grid = GridLayout::for_camera(camera);
         queue.write_buffer(
@@ -421,12 +462,99 @@ impl ViewportRenderer {
                 pass.draw(0..6, 0..1);
             }
         }
+        let mut copied = false;
+        if let Some(ids) = targets.ids.as_ref().filter(|_| picking) {
+            self.draw_ids(&mut encoder, ids);
+            copied = self.picker.copy_pixel(&mut encoder, &ids.texture, size);
+        }
         queue.submit([encoder.finish()]);
+        if copied {
+            self.picker.map();
+        }
 
         let targets = self.targets.insert(targets);
         RenderOutput {
             view: &targets.output,
             recreated,
+        }
+    }
+
+    /// Draws meshes (face ids) and lines (edge ids) into the id buffer.
+    /// Edges are drawn wider than in the colour pass and pulled towards the
+    /// camera the same way, so they win over the faces they bound.
+    fn draw_ids(&self, encoder: &mut wgpu::CommandEncoder, ids: &IdTargets) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("viewport ids"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &ids.view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    // Id 0 means nothing pickable.
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &ids.depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0.0),
+                    store: wgpu::StoreOp::Discard,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_bind_group(0, &self.globals_bind_group, &[]);
+
+        pass.set_pipeline(&self.pipelines.id_mesh);
+        for mesh in &self.meshes {
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+        }
+
+        pass.set_pipeline(&self.pipelines.id_lines);
+        if let Some(lines) = &self.lines {
+            pass.set_vertex_buffer(0, lines.instances.slice(..));
+            pass.draw(0..LINE_QUAD_VERTICES, 0..lines.instance_count);
+        }
+    }
+
+    fn create_id_targets(device: &wgpu::Device, size: [u32; 2]) -> IdTargets {
+        let extent = wgpu::Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        };
+        let create = |label, format, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let texture = create(
+            "viewport ids",
+            ID_FORMAT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let depth = create(
+            "viewport id depth",
+            DEPTH_FORMAT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        IdTargets {
+            view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
+            depth: depth.create_view(&wgpu::TextureViewDescriptor::default()),
+            texture,
         }
     }
 
@@ -475,6 +603,7 @@ impl ViewportRenderer {
             msaa,
             output,
             depth,
+            ids: None,
         }
     }
 

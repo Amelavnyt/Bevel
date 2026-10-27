@@ -42,3 +42,10 @@ fn fs_main(in: VertexOut, @builtin(front_facing) front: bool) -> @location(0) ve
     let shaded = in.color.rgb * diffuse + vec3<f32>(specular);
     return to_srgb(vec4<f32>(tint_face(shaded, highlight_state(in.id)), in.color.a));
 }
+
+// Id pass: the face id of each pixel, for picking. Written to an R32Uint
+// target, 0 where nothing pickable is drawn.
+@fragment
+fn fs_id(in: VertexOut) -> @location(0) vec4<u32> {
+    return vec4<u32>(in.id, 0u, 0u, 0u);
+}

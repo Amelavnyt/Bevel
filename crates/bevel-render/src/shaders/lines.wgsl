@@ -84,6 +84,9 @@ fn expand(segment: Instance, index: u32, extra_width: f32) -> vec4<f32> {
     return vec4<f32>(px / half_size * anchor.w, anchor.z, anchor.w);
 }
 
+// Extra width of lines in the id pass, in pixels, so thin edges are easy to hit.
+const ID_EXTRA_WIDTH: f32 = 6.0;
+
 @vertex
 fn vs_main(@builtin(vertex_index) index: u32, segment: Instance) -> VertexOut {
     var out: VertexOut;
@@ -96,4 +99,23 @@ fn vs_main(@builtin(vertex_index) index: u32, segment: Instance) -> VertexOut {
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     return to_srgb(vec4<f32>(tint_edge(in.color.rgb, highlight_state(in.id)), in.color.a));
+}
+
+// Id pass: the same quads, wider, writing the edge id to an R32Uint target.
+@vertex
+fn vs_id(@builtin(vertex_index) index: u32, segment: Instance) -> VertexOut {
+    var out: VertexOut;
+    out.position = expand(segment, index, ID_EXTRA_WIDTH);
+    out.color = segment.color;
+    out.id = segment.id;
+    return out;
+}
+
+@fragment
+fn fs_id(in: VertexOut) -> @location(0) vec4<u32> {
+    // Unpickable lines must not hide the faces behind them.
+    if in.id == 0u {
+        discard;
+    }
+    return vec4<u32>(in.id, 0u, 0u, 0u);
 }
