@@ -26,6 +26,10 @@ pub const HIGHLIGHT: Color32 = Color32::from_rgb(0x77, 0xc8, 0x9d);
 pub const HOVER: Color32 = Color32::from_rgb(0x2e, 0x47, 0x47);
 /// Pressed or selected widget background: the signature teal itself.
 pub const ACTIVE: Color32 = ACCENT;
+/// Errors: failed features, invalid inputs.
+pub const ERROR: Color32 = Color32::from_rgb(0xe0, 0x6c, 0x64);
+/// Warnings and skipped steps.
+pub const WARNING: Color32 = Color32::from_rgb(0xe0, 0xa8, 0x3a);
 /// Translucent background of controls floating over the viewport.
 pub const OVERLAY: Color32 = Color32::from_rgba_premultiplied(0x22, 0x25, 0x2a, 0xe6);
 

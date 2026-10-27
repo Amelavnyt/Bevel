@@ -12,6 +12,11 @@ publish.workspace = true
 name = "bevel"
 path = "src/main.rs"
 
+# Rebuilds bodies off the UI thread in the browser (a Web Worker).
+[[bin]]
+name = "bevel-worker"
+path = "src/worker_main.rs"
+
 [lints]
 workspace = true
 
@@ -30,6 +35,8 @@ bevel-doc.workspace = true
 bevel-script.workspace = true
 bevel-ui.workspace = true
 eframe.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 egui.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -43,5 +50,18 @@ rfd.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures.workspace = true
-# Downloads need Blob, Url and anchor elements, which eframe does not enable.
-web-sys = { workspace = true, features = ["Blob", "BlobPropertyBag", "HtmlAnchorElement", "Url"] }
+# Downloads, the file picker and the rebuild worker need features eframe
+# does not enable (ADR-0014).
+web-sys = { workspace = true, features = [
+    "Blob",
+    "BlobPropertyBag",
+    "DedicatedWorkerGlobalScope",
+    "File",
+    "FileList",
+    "HtmlAnchorElement",
+    "HtmlInputElement",
+    "Location",
+    "MessageEvent",
+    "Url",
+    "Worker",
+] }

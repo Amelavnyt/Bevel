@@ -5,6 +5,7 @@
 //! the one design workspace, not separate modes.
 
 use crate::icons::Icon;
+use bevel_model::PrimitiveKind;
 
 /// A toolbar group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +122,7 @@ pub const TOOLS: &[Tool] = &[
     tool("Chamfer", Modify, Icon::Chamfer, None, true, BLENDS, "Bevel edges by distance or angle"),
     tool("Shell", Modify, Icon::Shell, None, true, BLENDS, "Hollow a body, removing the selected faces"),
     tool("Draft", Modify, Icon::Draft, None, false, BLENDS, "Tilt faces relative to a neutral plane"),
+    tool("Change Parameters", Modify, Icon::Parameters, None, false, PRIMITIVES, "Edit the parameters that drive the model"),
     tool("Combine", Modify, Icon::Combine, None, true, BOOLEANS, "Join, cut or intersect bodies"),
     tool("Split Body", Modify, Icon::SplitBody, None, false, SWEEPS, "Split a body with a plane or face"),
     tool("Move/Copy", Modify, Icon::Move, None, false, SWEEPS, "Move or copy bodies"),
@@ -139,9 +141,19 @@ pub const TOOLS: &[Tool] = &[
 /// between selections arrive in Phase 7).
 pub const MEASURE: &str = "Measure";
 
+/// Name of the Change Parameters tool.
+pub const PARAMETERS: &str = "Change Parameters";
+
+/// The primitive a Create tool makes, if it is one.
+pub fn primitive(tool: &Tool) -> Option<PrimitiveKind> {
+    PrimitiveKind::ALL
+        .into_iter()
+        .find(|k| k.name() == tool.name)
+}
+
 /// Whether `tool` can be used now.
 pub fn is_available(tool: &Tool) -> bool {
-    tool.name == MEASURE
+    tool.name == MEASURE || tool.name == PARAMETERS || primitive(tool).is_some()
 }
 
 /// The tools of one group, in menu order.

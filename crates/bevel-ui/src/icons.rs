@@ -93,3 +93,17 @@ impl Icon {
         egui::Image::new(self.source()).fit_to_exact_size(egui::vec2(size, size))
     }
 }
+
+impl Icon {
+    /// The icon of a primitive feature.
+    pub fn primitive(kind: bevel_model::PrimitiveKind) -> Self {
+        use bevel_model::PrimitiveKind as K;
+        match kind {
+            K::Box => Self::Box,
+            K::Cylinder => Self::Cylinder,
+            K::Sphere => Self::Sphere,
+            K::Cone => Self::Cone,
+            K::Torus => Self::Torus,
+        }
+    }
+}

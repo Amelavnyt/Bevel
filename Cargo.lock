@@ -439,6 +439,8 @@ dependencies = [
  "eframe",
  "egui",
  "rfd",
+ "serde",
+ "serde_json",
  "slotmap",
  "tracing",
  "tracing-subscriber",

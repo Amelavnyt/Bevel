@@ -4,9 +4,10 @@
 //! rollback marker, and the document units.
 
 use crate::icons::Icon;
-use crate::{theme, widgets};
+use crate::{UiAction, UiState, theme, widgets};
 
-pub(crate) fn show(ui: &mut egui::Ui) {
+pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>) {
+    let _ = (&state, &actions);
     ui.horizontal_centered(|ui| {
         ui.add_enabled_ui(false, |ui| {
             for (icon, tip) in [

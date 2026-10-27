@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::document::Document;
 use crate::part::{Part, RenderScene, Target};
-use crate::platform::{self, SaveOutcome};
+use crate::platform::{self, Opened, PendingFile, SaveOutcome};
 use crate::viewport::Viewport;
+use bevel_doc::{BodyProps, Command, DocState};
 use bevel_render::{Camera, StandardView, ViewportOverlays};
-use bevel_ui::{BodyEntry, ExportFormat, LogBuffer, UiAction, UiState};
+use bevel_ui::{BodyEntry, ExportFormat, FeatureDialog, LogBuffer, UiAction, UiState};
+
+/// How long a "discard unsaved changes?" warning waits for the user to
+/// repeat the action, in seconds.
+const DISCARD_SECONDS: f64 = 5.0;
 
 /// Length of animated view changes, in seconds.
 const TRANSITION_SECONDS: f64 = 0.4;
@@ -39,11 +45,20 @@ pub struct BevelApp {
     aspect: f64,
     /// Fit the scene once the viewport's size is known.
     fit_pending: bool,
-    /// `None` if the demonstration part could not be built.
+    /// The open document and its rebuilds.
+    doc: Document,
+    /// The bodies of the latest rebuild.
     part: Option<Part>,
+    /// A file the user is choosing to open.
+    opening: Option<PendingFile>,
+    /// An action that would discard unsaved changes, armed until the given
+    /// time: doing it again before then goes ahead.
+    discard_armed: Option<(UiAction, f64)>,
     /// The scene currently uploaded, and the visibility it was built with.
     shown: Shown,
     shown_visibility: Vec<bool>,
+    /// The bodies changed since the scene was uploaded.
+    scene_dirty: bool,
     /// Pick table of the uploaded part scene.
     scene: Option<RenderScene>,
     /// Last pixel a pick was requested for, to avoid repeating it.
@@ -66,24 +81,7 @@ impl BevelApp {
         }
         let mut ui = UiState::default();
         ui.can_quit = can_quit;
-        let part = match Part::demo() {
-            Ok(part) => Some(part),
-            Err(err) => {
-                tracing::error!(%err, "could not build the demonstration part");
-                ui.notify(format!("Could not build the bodies: {err}"));
-                None
-            }
-        };
-        if let Some(part) = &part {
-            ui.bodies = part
-                .bodies
-                .iter()
-                .map(|b| BodyEntry {
-                    name: b.name.clone(),
-                    visible: true,
-                })
-                .collect();
-        }
+        let doc = Document::new(&cc.egui_ctx, DocState::new());
         tracing::info!(version = env!("CARGO_PKG_VERSION"), "Bevel started");
         Self {
             ui,
@@ -93,9 +91,13 @@ impl BevelApp {
             log,
             aspect: 1.0,
             fit_pending: true,
-            part,
+            doc,
+            part: None,
+            opening: None,
+            discard_armed: None,
             shown: Shown::Nothing,
             shown_visibility: Vec::new(),
+            scene_dirty: false,
             scene: None,
             last_pick_px: None,
             hovered: None,
@@ -107,6 +109,198 @@ impl BevelApp {
 
     fn visibility(&self) -> Vec<bool> {
         self.ui.bodies.iter().map(|b| b.visible).collect()
+    }
+
+    /// Takes a finished rebuild: new bodies for the viewport and browser.
+    fn take_rebuild(&mut self) {
+        if !self.doc.poll() {
+            return;
+        }
+        let Some(built) = self.doc.built() else {
+            return;
+        };
+        let state = self.doc.state();
+        let had_bodies = self.part.as_ref().is_some_and(|p| !p.bodies.is_empty());
+        // Bodies of a feature that exists only in an open dialog's preview.
+        let name = |id: bevel_model::BodyId| {
+            if state.feature(id.feature).is_some() {
+                state.body_name(id)
+            } else {
+                "Preview".to_owned()
+            }
+        };
+        let part = Part::from_built(built, &name);
+        self.ui.bodies = part
+            .bodies
+            .iter()
+            .map(|b| BodyEntry {
+                id: b.id,
+                name: b.name.clone(),
+                visible: state.body_props(b.id).visible,
+            })
+            .collect();
+        // Keys change with every rebuild, so selections cannot carry over.
+        self.selected.clear();
+        self.ui.selection = None;
+        self.fit_pending |= !had_bodies && !part.bodies.is_empty();
+        self.part = Some(part);
+        self.scene_dirty = true;
+        if let Some(dialog) = self.ui.feature_dialog.as_mut()
+            && dialog.errors.iter().all(Option::is_none)
+        {
+            dialog.error = self.doc.preview_error(dialog);
+        }
+    }
+
+    /// Runs a document command, reporting a refusal as a notice.
+    fn execute(&mut self, cmd: &Command) {
+        if let Err(err) = self.doc.execute(cmd) {
+            tracing::warn!(%err, "command refused");
+            self.ui.notify(err.to_string());
+        }
+    }
+
+    /// Whether `action` may discard unsaved changes now: yes if there are
+    /// none, or if the user repeats it after a warning.
+    fn may_discard(&mut self, action: &UiAction, now: f64) -> bool {
+        if !self.doc.session_mut().is_modified() {
+            return true;
+        }
+        if let Some((armed, until)) = &self.discard_armed
+            && armed == action
+            && now <= *until
+        {
+            self.discard_armed = None;
+            return true;
+        }
+        self.discard_armed = Some((action.clone(), now + DISCARD_SECONDS));
+        self.ui
+            .notify("This document has unsaved changes. Do it again to discard them.");
+        false
+    }
+
+    fn replace_document(&mut self, state: DocState, location: Option<String>) {
+        self.ui.feature_dialog = None;
+        self.doc.replace(state, location);
+        self.part = None;
+        self.ui.bodies.clear();
+        self.selected.clear();
+        self.ui.selection = None;
+        self.scene_dirty = true;
+        self.fit_pending = true;
+    }
+
+    fn save(&mut self, ask: bool) {
+        let bytes = match bevel_doc::file::write(self.doc.state()) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                self.ui.notify(format!("Could not save: {err}"));
+                return;
+            }
+        };
+        let location = if ask { None } else { self.doc.location.clone() };
+        let name = format!("{}.bevel", self.doc.title());
+        match platform::save_document(location.as_deref(), &name, &bytes) {
+            Ok(SaveOutcome::Saved(place)) => {
+                tracing::info!(%place, "saved");
+                self.ui.notify(format!("Saved to {place}"));
+                self.doc.location = Some(place);
+                self.doc.session_mut().mark_saved();
+            }
+            Ok(SaveOutcome::Cancelled) => {}
+            Err(err) => self.ui.notify(format!("Could not save: {err}")),
+        }
+    }
+
+    /// Opens a file the user picked, once it has been read.
+    fn take_opened(&mut self) {
+        let Some(opened) = self.opening.as_ref().and_then(PendingFile::take) else {
+            return;
+        };
+        self.opening = None;
+        match opened {
+            Opened::File(name, bytes) => match bevel_doc::file::read(&bytes) {
+                Ok(state) => {
+                    tracing::info!(%name, "opened");
+                    self.replace_document(state, Some(name));
+                }
+                Err(err) => self.ui.notify(format!("Could not open {name}: {err}")),
+            },
+            Opened::Cancelled => {}
+            Opened::Failed(err) => self.ui.notify(format!("Could not open the file: {err}")),
+        }
+    }
+
+    fn open_dialog(&mut self, mut dialog: FeatureDialog) {
+        self.doc.check_dialog(&mut dialog);
+        self.ui.feature_dialog = Some(dialog);
+    }
+
+    fn apply_document_action(&mut self, action: UiAction, now: f64) {
+        match action {
+            UiAction::Command(cmd) => self.execute(&cmd),
+            UiAction::Undo => {
+                if let Some(label) = self.doc.session_mut().undo() {
+                    self.doc.rebuild(None);
+                    self.ui.notify(format!("Undid {label}"));
+                }
+            }
+            UiAction::Redo => {
+                if let Some(label) = self.doc.session_mut().redo() {
+                    self.doc.rebuild(None);
+                    self.ui.notify(format!("Redid {label}"));
+                }
+            }
+            UiAction::NewDocument => {
+                if self.may_discard(&action, now) {
+                    self.replace_document(DocState::new(), None);
+                }
+            }
+            UiAction::OpenSample => {
+                if self.may_discard(&action, now) {
+                    self.replace_document(bevel_doc::sample::primitives(), None);
+                }
+            }
+            UiAction::Open => {
+                if self.may_discard(&action, now) {
+                    self.opening = Some(platform::open_file("bevel", "Bevel document"));
+                }
+            }
+            UiAction::Save => self.save(false),
+            UiAction::SaveAs => self.save(true),
+            UiAction::NewPrimitive(kind) => self.open_dialog(FeatureDialog::new(kind)),
+            UiAction::EditFeature(id) => match self.doc.edit_dialog(id) {
+                Some(dialog) => self.open_dialog(dialog),
+                None => self.ui.notify("That feature cannot be edited"),
+            },
+            UiAction::FeatureDialogChanged => {
+                if let Some(mut dialog) = self.ui.feature_dialog.take() {
+                    self.doc.check_dialog(&mut dialog);
+                    self.ui.feature_dialog = Some(dialog);
+                }
+            }
+            UiAction::FeatureDialogOk => {
+                if let Some(dialog) = self.ui.feature_dialog.take() {
+                    match self.doc.dialog_command(&dialog) {
+                        Some(cmd) => self.execute(&cmd),
+                        None => self.doc.rebuild(None),
+                    }
+                }
+            }
+            UiAction::FeatureDialogCancel => {
+                if self.ui.feature_dialog.take().is_some() {
+                    self.doc.rebuild(None);
+                }
+            }
+            UiAction::SetBodyVisible(body, visible) => {
+                let props = BodyProps {
+                    visible,
+                    ..self.doc.state().body_props(body)
+                };
+                self.execute(&Command::SetBodyProps { body, props });
+            }
+            _ => {}
+        }
     }
 
     fn apply(&mut self, action: UiAction, ctx: &egui::Context) {
@@ -135,6 +329,7 @@ impl BevelApp {
                     self.update_selection_info();
                 }
             }
+            other => self.apply_document_action(other, ctx.input(|i| i.time)),
         }
     }
 
@@ -216,9 +411,12 @@ impl BevelApp {
         } else {
             Shown::Part
         };
-        if wanted == self.shown && (wanted != Shown::Part || visibility == self.shown_visibility) {
+        if wanted == self.shown
+            && (wanted != Shown::Part || (visibility == self.shown_visibility && !self.scene_dirty))
+        {
             return;
         }
+        self.scene_dirty = false;
         let first = self.shown == Shown::Nothing || wanted != self.shown;
         match wanted {
             Shown::GeometryDebug => match crate::geometry_debug::scene() {
@@ -349,6 +547,13 @@ fn select(selection: &mut Vec<Target>, target: Option<Target>, shift: bool) -> b
 
 impl eframe::App for BevelApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.take_rebuild();
+        self.take_opened();
+        self.ui.doc = self.doc.view();
+        if self.ui.doc.rebuilding || self.opening.is_some() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(50));
+        }
         self.step_transition(ui.ctx());
         if let Some(render_state) = frame.wgpu_render_state() {
             self.sync_scene(&render_state.device);
