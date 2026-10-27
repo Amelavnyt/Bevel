@@ -160,6 +160,8 @@ pub struct ViewportRenderer {
     /// Z axis segment (one line instance); its length follows the grid, so it
     /// is rewritten every frame.
     axis_lines: wgpu::Buffer,
+    /// Contents of `axis_lines`, to rebuild it only when they change.
+    axis_instance: [u32; LINE_INSTANCE_WORDS],
     scene_bounds: Aabb3,
     targets: Option<Targets>,
     picker: Picker,
@@ -220,11 +222,11 @@ impl ViewportRenderer {
 
         let pipelines = Pipelines::new(device, &layout, sample_count);
 
-        let axis_lines = device.create_buffer(&wgpu::BufferDescriptor {
+        let axis_instance = [0u32; LINE_INSTANCE_WORDS];
+        let axis_lines = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("viewport axis lines"),
-            size: (LINE_INSTANCE_WORDS * 4) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+            contents: &pack::words_to_bytes(&axis_instance),
+            usage: wgpu::BufferUsages::VERTEX,
         });
 
         Self {
@@ -238,6 +240,7 @@ impl ViewportRenderer {
             meshes: Vec::new(),
             lines: None,
             axis_lines,
+            axis_instance,
             scene_bounds: Aabb3::EMPTY,
             targets: None,
             picker: Picker::new(device),
@@ -399,7 +402,17 @@ impl ViewportRenderer {
         let z_top = grid.fade_radius as f32 * 0.5;
         let axis_instance =
             pack::pack_line_instance([0.0; 3], [0.0, 0.0, z_top], axis_z, 0, AXIS_Z_WIDTH);
-        queue.write_buffer(&self.axis_lines, 0, &pack::words_to_bytes(&axis_instance));
+        // Rebuild the (tiny) axis instance buffer when it changes instead of
+        // writing into a buffer the same frame draws from as vertex input:
+        // Vulkan synchronization validation flags that write as a hazard.
+        if self.axis_instance != axis_instance {
+            self.axis_lines = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("viewport axis lines"),
+                contents: &pack::words_to_bytes(&axis_instance),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            self.axis_instance = axis_instance;
+        }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("viewport"),
