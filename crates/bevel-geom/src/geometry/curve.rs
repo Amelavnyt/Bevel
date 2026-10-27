@@ -3,6 +3,7 @@
 //! [`CurveGeom`] and the curve enums [`Curve2`] and [`Curve3`].
 
 use bevel_math::{Aabb2, Aabb3, DMat3, DMat4, DVec3, DVec4, Interval, Point2, Point3};
+use serde::{Deserialize, Serialize};
 
 use super::restriction;
 use crate::analytic::transform::{check_invertible3, check_invertible4};
@@ -137,7 +138,10 @@ pub trait CurveGeom {
 }
 
 /// A curve in the plane: analytic or NURBS.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// Serialized externally tagged (`{ "Line": { .. } }`); each variant
+/// re-validates on deserialization.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Curve2 {
     /// A straight line.
     Line(Line2),
@@ -150,7 +154,10 @@ pub enum Curve2 {
 }
 
 /// A curve in space: analytic or NURBS.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// Serialized externally tagged (`{ "Circle": { .. } }`); each variant
+/// re-validates on deserialization.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Curve3 {
     /// A straight line.
     Line(Line3),

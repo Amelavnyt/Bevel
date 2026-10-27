@@ -28,6 +28,14 @@
 //! the submodules; each one documents the algorithm it uses. All of them
 //! except degree reduction and knot removal leave the geometry unchanged up
 //! to rounding; those two stay within the tolerance they are given.
+//!
+//! # Serialization
+//!
+//! A curve serializes as `{ "degree", "knots", "control" }` with the
+//! homogeneous control points `(w P, w)` exactly as stored, and
+//! deserializes through [`NurbsCurve::new`], so a corrupt file (a knot
+//! vector that does not fit the degree, a wrong number of control points, a
+//! non-positive weight) is refused.
 
 mod compat;
 mod degree;
@@ -39,6 +47,7 @@ pub use compat::make_compatible;
 pub use measure::ClosestPoint;
 
 use bevel_math::{Aabb3, DMat3, DMat4, DVec3, DVec4};
+use serde::{Deserialize, Serialize};
 
 use crate::basis::{basis_funs_raw, ders_basis_funs_raw};
 use crate::knots::check_degree;
@@ -53,7 +62,11 @@ const RATIONAL_WEIGHT_TOLERANCE: f64 = 1e-14;
 ///
 /// Use [`NurbsCurve2`] for curves in the plane (sketches, parameter space)
 /// and [`NurbsCurve3`] for curves in model space.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(
+    try_from = "NurbsCurveRaw<H>",
+    bound(serialize = "H: Serialize", deserialize = "H: Deserialize<'de>")
+)]
 #[must_use]
 pub struct NurbsCurve<H: Homogeneous> {
     /// Invariant: `1 <= degree <= MAX_DEGREE`.
@@ -64,7 +77,25 @@ pub struct NurbsCurve<H: Homogeneous> {
     /// Invariant: finite, with strictly positive weights.
     control: Vec<H>,
     /// Cached: some weight differs from the first.
+    #[serde(skip)]
     rational: bool,
+}
+
+/// The serialized form of a [`NurbsCurve`], checked by [`NurbsCurve::new`].
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "H: Deserialize<'de>"))]
+struct NurbsCurveRaw<H> {
+    degree: usize,
+    knots: KnotVector,
+    control: Vec<H>,
+}
+
+impl<H: Homogeneous> TryFrom<NurbsCurveRaw<H>> for NurbsCurve<H> {
+    type Error = GeomError;
+
+    fn try_from(raw: NurbsCurveRaw<H>) -> Result<Self, GeomError> {
+        Self::new(raw.degree, raw.knots, raw.control)
+    }
 }
 
 /// A NURBS curve in the plane; control points are `(w x, w y, w)`.

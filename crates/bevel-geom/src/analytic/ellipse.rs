@@ -19,19 +19,21 @@
 //! equally close; for `a = b`, `t = 0`).
 
 use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Frame3, Interval, Point2, Point3, Vector2, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedCurve, ParamMap, ellipse_arc_axes_2d};
 
 use super::{
-    Domain, FULL_TURN, check_frame, check_point2, check_point3, check_range, closest_on_ellipse,
-    derivative_count, sinusoid_extrema, trig_derivative, unit2, wrap_angle,
+    Domain, FULL_TURN, check_frame, check_point2, check_point3, check_range, check_stored2,
+    closest_on_ellipse, derivative_count, sinusoid_extrema, trig_derivative, unit2, wrap_angle,
 };
 use crate::{ClosestPoint, GeomError, NurbsCurve, NurbsCurve2, NurbsCurve3, ellipse_arc};
 
 /// An ellipse in the plane with its own axes:
 /// `C(t) = center + a cos(t) x + b sin(t) y` with the major axis `x` and
 /// `y = +-perp(x)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Ellipse2Raw")]
 #[must_use]
 pub struct Ellipse2 {
     center: Point2,
@@ -41,14 +43,58 @@ pub struct Ellipse2 {
     minor: f64,
 }
 
+/// The serialized form of an [`Ellipse2`], checked by
+/// [`Ellipse2::from_axis`].
+#[derive(Deserialize)]
+struct Ellipse2Raw {
+    center: Point2,
+    x: Vector2,
+    y: Vector2,
+    major: f64,
+    minor: f64,
+}
+
+impl TryFrom<Ellipse2Raw> for Ellipse2 {
+    type Error = GeomError;
+
+    fn try_from(raw: Ellipse2Raw) -> Result<Self, GeomError> {
+        let ccw = raw.x.perp_dot(raw.y) > 0.0;
+        let e = Self::from_axis(raw.center, raw.x, ccw, raw.major, raw.minor)?;
+        check_stored2(raw.x, e.x)?;
+        check_stored2(raw.y, e.y)?;
+        Ok(Self {
+            x: raw.x,
+            y: raw.y,
+            ..e
+        })
+    }
+}
+
 /// An ellipse in space: `C(t) = o + a cos(t) x + b sin(t) y` in the frame
 /// `(o, x, y, z)`, with the major axis along `x`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Ellipse3Raw")]
 #[must_use]
 pub struct Ellipse3 {
     frame: Frame3,
     major: f64,
     minor: f64,
+}
+
+/// The serialized form of an [`Ellipse3`], checked by [`Ellipse3::new`].
+#[derive(Deserialize)]
+struct Ellipse3Raw {
+    frame: Frame3,
+    major: f64,
+    minor: f64,
+}
+
+impl TryFrom<Ellipse3Raw> for Ellipse3 {
+    type Error = GeomError;
+
+    fn try_from(raw: Ellipse3Raw) -> Result<Self, GeomError> {
+        Self::new(raw.frame, raw.major, raw.minor)
+    }
 }
 
 /// Checks `major >= minor > 0`, both finite.

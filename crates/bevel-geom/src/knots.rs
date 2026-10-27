@@ -29,6 +29,18 @@
 //! distinct knots are always more than the tolerance apart. Parameters passed
 //! to knot insertion, removal and splitting are snapped to an existing knot in
 //! the same way.
+//!
+//! # Serialization
+//!
+//! A knot vector serializes as the plain sequence of its knots. A
+//! deserialized vector is checked against the rules that do not depend on
+//! the degree (finite, non-decreasing, at least four knots, a range of
+//! positive length) and snapped; the curve or surface that owns it checks
+//! it against its degree when it is deserialized itself, through
+//! [`NurbsCurve::new`](crate::NurbsCurve::new) or
+//! [`NurbsSurface::new`](crate::NurbsSurface::new).
+
+use serde::{Deserialize, Serialize, Serializer};
 
 use crate::{GeomError, MAX_DEGREE};
 
@@ -40,7 +52,8 @@ const KNOT_RELATIVE_TOLERANCE: f64 = 1e-12;
 /// The vector does not store its degree; methods that depend on it take the
 /// degree `p` as an argument; whatever owns the vector validates it against
 /// its own degree.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(try_from = "Vec<f64>")]
 pub struct KnotVector {
     /// Invariant: finite, non-decreasing, at least four values, snapped (equal
     /// knots are bit-identical and distinct knots differ by more than
@@ -84,6 +97,30 @@ impl KnotVector {
         let mut kv = Self { knots };
         kv.snap();
         kv.validate(degree)?;
+        Ok(kv)
+    }
+
+    /// Checks the rules that do not depend on the degree (finite,
+    /// non-decreasing, at least four knots, positive range) and snaps.
+    /// Used for deserialization; the owner checks the degree.
+    fn from_sequence(knots: Vec<f64>) -> Result<Self, GeomError> {
+        if knots.iter().any(|k| !k.is_finite()) {
+            return Err(GeomError::NonFinite);
+        }
+        if knots.len() < 4 {
+            return Err(GeomError::InvalidKnotVector(
+                "a knot vector needs at least four knots",
+            ));
+        }
+        if knots.windows(2).any(|w| w[1] < w[0]) {
+            return Err(GeomError::InvalidKnotVector("knots must be non-decreasing"));
+        }
+        let mut kv = Self { knots };
+        kv.snap();
+        let (first, last) = kv.ends();
+        if last <= first {
+            return Err(GeomError::InvalidKnotVector("the domain has zero length"));
+        }
         Ok(kv)
     }
 
@@ -376,6 +413,20 @@ impl KnotVector {
             }
         }
         Ok(())
+    }
+}
+
+impl Serialize for KnotVector {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.knots.serialize(serializer)
+    }
+}
+
+impl TryFrom<Vec<f64>> for KnotVector {
+    type Error = GeomError;
+
+    fn try_from(knots: Vec<f64>) -> Result<Self, GeomError> {
+        Self::from_sequence(knots)
     }
 }
 

@@ -28,6 +28,7 @@
 use std::f64::consts::{FRAC_PI_2, PI};
 
 use bevel_math::{Aabb3, DVec4, Frame3, Interval, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedSurface, ParamMap, revolve, segment_curve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
@@ -41,12 +42,29 @@ const APEX_TOLERANCE: f64 = 1e-12;
 
 /// An unbounded circular (double) cone: `S(u, v) = o + (r0 + v
 /// tan(alpha)) e(u) + v z` in the frame `(o, x, y, z)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ConeRaw")]
 #[must_use]
 pub struct Cone {
     frame: Frame3,
     radius: f64,
     half_angle: f64,
+}
+
+/// The serialized form of a [`Cone`], checked by [`Cone::new`].
+#[derive(Deserialize)]
+struct ConeRaw {
+    frame: Frame3,
+    radius: f64,
+    half_angle: f64,
+}
+
+impl TryFrom<ConeRaw> for Cone {
+    type Error = GeomError;
+
+    fn try_from(raw: ConeRaw) -> Result<Self, GeomError> {
+        Self::new(raw.frame, raw.radius, raw.half_angle)
+    }
 }
 
 impl Cone {

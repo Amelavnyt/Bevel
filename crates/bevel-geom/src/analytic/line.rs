@@ -8,27 +8,73 @@
 //! `o`, so the reversed line at `-t` is the original at `t`.
 
 use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Interval, Point2, Point3, Vector2, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedCurve, ParamMap, segment_curve};
-use super::{Domain, check_point2, check_point3, check_range, derivative_count, unit2, unit3};
+use super::{
+    Domain, check_point2, check_point3, check_range, check_stored2, check_stored3,
+    derivative_count, unit2, unit3,
+};
 use crate::{ClosestPoint, GeomError, NurbsCurve};
 
 /// An unbounded straight line in the plane: `C(t) = origin + t direction`
 /// with a unit direction.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Line2Raw")]
 #[must_use]
 pub struct Line2 {
     origin: Point2,
     direction: Vector2,
 }
 
+/// The serialized form of a [`Line2`], checked by [`Line2::new`].
+#[derive(Deserialize)]
+struct Line2Raw {
+    origin: Point2,
+    direction: Vector2,
+}
+
+impl TryFrom<Line2Raw> for Line2 {
+    type Error = GeomError;
+
+    fn try_from(raw: Line2Raw) -> Result<Self, GeomError> {
+        let line = Self::new(raw.origin, raw.direction)?;
+        check_stored2(raw.direction, line.direction)?;
+        Ok(Self {
+            direction: raw.direction,
+            ..line
+        })
+    }
+}
+
 /// An unbounded straight line in space: `C(t) = origin + t direction` with
 /// a unit direction.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Line3Raw")]
 #[must_use]
 pub struct Line3 {
     origin: Point3,
     direction: Vector3,
+}
+
+/// The serialized form of a [`Line3`], checked by [`Line3::new`].
+#[derive(Deserialize)]
+struct Line3Raw {
+    origin: Point3,
+    direction: Vector3,
+}
+
+impl TryFrom<Line3Raw> for Line3 {
+    type Error = GeomError;
+
+    fn try_from(raw: Line3Raw) -> Result<Self, GeomError> {
+        let line = Self::new(raw.origin, raw.direction)?;
+        check_stored3(raw.direction, line.direction)?;
+        Ok(Self {
+            direction: raw.direction,
+            ..line
+        })
+    }
 }
 
 /// Generates the parts shared by [`Line2`] and [`Line3`].

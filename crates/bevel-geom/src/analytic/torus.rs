@@ -23,6 +23,7 @@
 //! tube is closest) `v = 0`.
 
 use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedSurface, ParamMap, revolve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
@@ -34,12 +35,29 @@ use crate::{Curvatures, GeomError, NurbsSurface, SurfaceClosestPoint, circle_arc
 
 /// A ring torus: `S(u, v) = o + (R + r cos(v)) e(u) + r sin(v) z` in the
 /// frame `(o, x, y, z)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "TorusRaw")]
 #[must_use]
 pub struct Torus {
     frame: Frame3,
     major: f64,
     minor: f64,
+}
+
+/// The serialized form of a [`Torus`], checked by [`Torus::new`].
+#[derive(Deserialize)]
+struct TorusRaw {
+    frame: Frame3,
+    major: f64,
+    minor: f64,
+}
+
+impl TryFrom<TorusRaw> for Torus {
+    type Error = GeomError;
+
+    fn try_from(raw: TorusRaw) -> Result<Self, GeomError> {
+        Self::new(raw.frame, raw.major, raw.minor)
+    }
 }
 
 impl Torus {

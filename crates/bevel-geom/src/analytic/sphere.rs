@@ -22,6 +22,7 @@
 use std::f64::consts::FRAC_PI_2;
 
 use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedSurface, ParamMap, revolve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
@@ -46,11 +47,27 @@ pub(crate) const LATITUDES: Interval = Interval {
 
 /// A sphere: `S(u, v) = o + r (cos(v) e(u) + sin(v) z)` in the frame `(o,
 /// x, y, z)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "SphereRaw")]
 #[must_use]
 pub struct Sphere {
     frame: Frame3,
     radius: f64,
+}
+
+/// The serialized form of a [`Sphere`], checked by [`Sphere::new`].
+#[derive(Deserialize)]
+struct SphereRaw {
+    frame: Frame3,
+    radius: f64,
+}
+
+impl TryFrom<SphereRaw> for Sphere {
+    type Error = GeomError;
+
+    fn try_from(raw: SphereRaw) -> Result<Self, GeomError> {
+        Self::new(raw.frame, raw.radius)
+    }
 }
 
 impl Sphere {

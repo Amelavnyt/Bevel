@@ -16,6 +16,7 @@
 //! height is equally close, is the one at `u = 0`.
 
 use bevel_math::{Aabb3, DVec4, Frame3, Interval, Point3, Vector3};
+use serde::{Deserialize, Serialize};
 
 use super::convert::{ConvertedSurface, ParamMap, revolve, segment_curve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
@@ -26,11 +27,27 @@ use crate::{Curvatures, GeomError, NurbsSurface, SurfaceClosestPoint};
 
 /// An unbounded circular cylinder: `S(u, v) = o + r e(u) + v z` in the
 /// frame `(o, x, y, z)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "CylinderRaw")]
 #[must_use]
 pub struct Cylinder {
     frame: Frame3,
     radius: f64,
+}
+
+/// The serialized form of a [`Cylinder`], checked by [`Cylinder::new`].
+#[derive(Deserialize)]
+struct CylinderRaw {
+    frame: Frame3,
+    radius: f64,
+}
+
+impl TryFrom<CylinderRaw> for Cylinder {
+    type Error = GeomError;
+
+    fn try_from(raw: CylinderRaw) -> Result<Self, GeomError> {
+        Self::new(raw.frame, raw.radius)
+    }
 }
 
 impl Cylinder {
