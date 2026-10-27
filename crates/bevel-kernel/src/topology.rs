@@ -383,6 +383,20 @@ pub struct Body {
 }
 
 impl Body {
+    /// An empty body of the given kind (only the builder makes these).
+    pub(crate) fn empty(kind: BodyKind) -> Self {
+        Self {
+            vertices: SlotMap::with_key(),
+            edges: SlotMap::with_key(),
+            coedges: SlotMap::with_key(),
+            loops: SlotMap::with_key(),
+            faces: SlotMap::with_key(),
+            shell_arena: SlotMap::with_key(),
+            shells: Vec::new(),
+            kind,
+        }
+    }
+
     /// Whether the body is a solid or a sheet.
     pub fn kind(&self) -> BodyKind {
         self.kind

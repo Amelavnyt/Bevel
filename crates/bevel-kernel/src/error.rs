@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::naming::TopoName;
 use crate::topology::EntityKey;
+use crate::validate::Issue;
 
 /// Why a kernel operation failed.
 ///
@@ -79,6 +80,14 @@ pub enum KernelError {
         reason: &'static str,
     },
 
+    /// A finished body failed validation; `issues` lists everything the
+    /// validator found.
+    #[error("the body is invalid: {}", summary(.issues))]
+    InvalidBody {
+        /// The validator's findings, never empty.
+        issues: Vec<Issue>,
+    },
+
     /// A name was recorded twice in an operation's history.
     #[error("{0} is recorded twice in the history")]
     DuplicateHistory(Box<TopoName>),
@@ -86,4 +95,13 @@ pub enum KernelError {
     /// The operation was cancelled through its context.
     #[error("the operation was cancelled")]
     Cancelled,
+}
+
+/// "N issues; first: ..." for [`KernelError::InvalidBody`].
+fn summary(issues: &[Issue]) -> String {
+    match issues.first() {
+        None => "no issues were reported".to_owned(),
+        Some(first) if issues.len() == 1 => first.to_string(),
+        Some(first) => format!("{} issues, the first: {first}", issues.len()),
+    }
 }
