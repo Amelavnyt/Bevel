@@ -506,6 +506,12 @@ version = "0.1.0"
 dependencies = [
  "bevel-geom",
  "bevel-math",
+ "insta",
+ "proptest",
+ "serde",
+ "serde_json",
+ "slotmap",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1758,6 +1764,7 @@ checksum = "b67d3d2e287e4b86c10b3f3b641033d1f89b74bdb39d05f34952e2b9a6fe21cd"
 dependencies = [
  "console",
  "once_cell",
+ "serde",
  "similar",
  "tempfile",
 ]
@@ -3363,6 +3370,7 @@ version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bdd58c3c93c3d278ca835519292445cb4b0d4dc59ccfdf7ceadaab3f8aeb4038"
 dependencies = [
+ "serde",
  "version_check",
 ]
 
