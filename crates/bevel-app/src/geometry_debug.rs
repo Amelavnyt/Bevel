@@ -2,12 +2,13 @@
 
 //! The geometry debug scene (View > Geometry Debug): sample NURBS curves and
 //! surfaces built with `bevel-geom`, sampled into the renderer's plain mesh
-//! and line buffers. It exercises evaluation, normals, conics, fitting and
-//! surfaces of revolution until real bodies exist.
+//! and line buffers. It exercises evaluation, normals, conics, fitting,
+//! surfaces of revolution and exact NURBS forms of analytic surfaces until
+//! real bodies exist.
 
 use bevel_geom::fit::{self, Parametrization};
-use bevel_geom::{GeomError, NurbsCurve3, NurbsSurface, circle_arc};
-use bevel_math::{Frame3, Point3, Vector3};
+use bevel_geom::{Cone, GeomError, NurbsCurve3, NurbsSurface, Sphere, circle_arc};
+use bevel_math::{Frame3, Interval, Point3, Vector3};
 use bevel_render::{LineSet, TriangleMesh};
 use std::f64::consts::TAU;
 
@@ -78,6 +79,17 @@ pub fn scene() -> Result<(Vec<TriangleMesh>, Vec<LineSet>), GeomError> {
     let vase = NurbsSurface::revolution(&profile, axis, Vector3::Z, TAU)?;
     meshes.push(surface_mesh(&vase, 64, 32, SURFACE));
     lines.push(curve_lines(&profile, 100, CURVE));
+
+    // Analytic surfaces converted to their exact NURBS forms.
+    let at = |x: f64, y: f64, z: f64| Frame3 {
+        origin: Point3::new(x, y, z),
+        ..Frame3::WORLD
+    };
+    let sphere = Sphere::new(at(-60.0, 75.0, 16.0), 16.0)?;
+    meshes.push(surface_mesh(&sphere.to_nurbs_full()?, 64, 32, SURFACE));
+    let cone = Cone::new(at(-110.0, 75.0, 0.0), 14.0, 20f64.to_radians())?;
+    let cone_patch = cone.to_nurbs(Interval::new(0.0, TAU), Interval::new(0.0, 30.0))?;
+    meshes.push(surface_mesh(&cone_patch, 64, 8, SURFACE));
 
     Ok((meshes, lines))
 }
@@ -154,7 +166,7 @@ mod tests {
     #[test]
     fn scene_builds_and_is_finite() {
         let (meshes, lines) = scene().unwrap();
-        assert_eq!(meshes.len(), 2);
+        assert_eq!(meshes.len(), 4);
         assert!(!lines.is_empty());
         for mesh in &meshes {
             assert!(mesh.positions.iter().flatten().all(|c| c.is_finite()));
@@ -170,6 +182,19 @@ mod tests {
         assert_eq!(torus.indices.len(), 6 * 64 * 32);
         let count = torus.positions.len() as u32;
         assert!(torus.indices.iter().all(|&i| i < count));
+    }
+
+    #[test]
+    fn sphere_samples_lie_on_the_sphere() {
+        let (meshes, _) = scene().unwrap();
+        let center = [-60.0, 75.0, 16.0];
+        for p in &meshes[2].positions {
+            let r = (0..3)
+                .map(|i| (f64::from(p[i]) - center[i]).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            assert!((r - 16.0).abs() < 1e-4, "off the sphere by {}", r - 16.0);
+        }
     }
 
     #[test]
