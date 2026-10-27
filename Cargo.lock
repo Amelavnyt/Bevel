@@ -468,6 +468,10 @@ dependencies = [
  "bevel-model",
  "bevel-sketch",
  "bevel-timeline",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zip",
 ]
 
 [[package]]
