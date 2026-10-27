@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Shaded triangle meshes: camera-relative key and fill lights plus a soft
 // specular highlight, so faces stay readable from every direction.
+//
+// The `VertexIn` attributes must match MESH_VERTEX_FORMATS in pack.rs.
 
 struct VertexIn {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) color: vec4<f32>,
+    @location(3) id: u32,
 };
 
 struct VertexOut {
     @builtin(position) position: vec4<f32>,
     @location(0) normal_view: vec3<f32>,
     @location(1) color: vec4<f32>,
+    @location(2) @interpolate(flat) id: u32,
 };
 
 @vertex
@@ -20,6 +24,7 @@ fn vs_main(in: VertexIn) -> VertexOut {
     out.position = globals.view_proj * vec4<f32>(in.position, 1.0);
     out.normal_view = (globals.view * vec4<f32>(in.normal, 0.0)).xyz;
     out.color = in.color;
+    out.id = in.id;
     return out;
 }
 

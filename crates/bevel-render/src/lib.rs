@@ -21,6 +21,8 @@
 
 mod camera;
 mod mesh;
+mod pack;
+mod pipelines;
 mod renderer;
 
 pub use camera::{Camera, Projection, StandardView};

@@ -41,6 +41,7 @@ fn test_cube() -> TriangleMesh {
         for c in corners {
             mesh.positions.push(corner(c));
             mesh.normals.push(normal);
+            mesh.ids.push(0);
         }
         mesh.indices
             .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
@@ -59,6 +60,7 @@ fn test_cube_edges() -> LineSet {
             if a & bit == 0 {
                 lines.positions.push(corner(a));
                 lines.positions.push(corner(a | bit));
+                lines.ids.push(0);
             }
         }
     }
@@ -97,5 +99,13 @@ mod tests {
     #[test]
     fn cube_has_twelve_edges() {
         assert_eq!(test_cube_edges().positions.len(), 24);
+    }
+
+    #[test]
+    fn cube_has_one_id_per_vertex_and_per_edge() {
+        let mesh = test_cube();
+        assert_eq!(mesh.ids.len(), mesh.positions.len());
+        let edges = test_cube_edges();
+        assert_eq!(edges.ids.len(), edges.positions.len() / 2);
     }
 }

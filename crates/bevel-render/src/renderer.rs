@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::pack::{self, LINE_INSTANCE_WORDS};
+use crate::pipelines::{DEPTH_FORMAT, OUTPUT_FORMAT, Pipelines};
 use crate::{Camera, LineSet, Projection, TriangleMesh};
 use bevel_math::{Aabb3, Point3};
 use wgpu::util::DeviceExt as _;
 
-/// Colour format of the texture the renderer resolves into.
-///
-/// The UI composites in gamma space and samples textures as stored, so the
-/// target holds sRGB-encoded values in a plain UNORM format: the shaders
-/// encode their linear results with `to_srgb` (shaders/globals.wgsl).
-const OUTPUT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// Number of `f32`s in the `Globals` uniform block (see shaders/globals.wgsl).
 const GLOBALS_FLOATS: usize = 16 + 16 + 4 * 10;
 /// Largest render target edge we ask for; larger viewports are clamped.
 const MAX_TARGET_SIZE: u32 = 8192;
-
-/// Mesh vertex: position, normal, colour.
-const MESH_VERTEX_FLOATS: usize = 3 + 3 + 4;
-/// Line vertex: position, colour.
-const LINE_VERTEX_FLOATS: usize = 3 + 4;
+/// Vertices drawn per line segment instance: two triangles.
+const LINE_QUAD_VERTICES: u32 = 6;
+/// Width of the Z axis, in pixels.
+const AXIS_Z_WIDTH: f32 = 1.5;
 
 /// Viewport colours, as sRGB bytes with straight alpha.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,14 +92,6 @@ fn shown(color: [f32; 4], visible: bool) -> [f32; 4] {
     }
 }
 
-fn f32_bytes(values: &[f32]) -> Vec<u8> {
-    values.iter().flat_map(|v| v.to_le_bytes()).collect()
-}
-
-fn u32_bytes(values: &[u32]) -> Vec<u8> {
-    values.iter().flat_map(|v| v.to_le_bytes()).collect()
-}
-
 /// The texture a frame was rendered into.
 pub struct RenderOutput<'a> {
     /// View of the resolved colour texture: [`wgpu::TextureFormat::Rgba8Unorm`]
@@ -130,9 +116,10 @@ struct GpuMesh {
     index_count: u32,
 }
 
+/// Line segments as instances of the thick line pipeline.
 struct GpuLines {
-    vertices: wgpu::Buffer,
-    vertex_count: u32,
+    instances: wgpu::Buffer,
+    instance_count: u32,
 }
 
 /// Renders the 3D viewport into an offscreen texture.
@@ -145,7 +132,8 @@ pub struct ViewportRenderer {
     pipelines: Pipelines,
     meshes: Vec<GpuMesh>,
     lines: Option<GpuLines>,
-    /// Z axis segment; its length follows the grid, so it is rewritten every frame.
+    /// Z axis segment (one line instance); its length follows the grid, so it
+    /// is rewritten every frame.
     axis_lines: wgpu::Buffer,
     scene_bounds: Aabb3,
     targets: Option<Targets>,
@@ -208,7 +196,7 @@ impl ViewportRenderer {
 
         let axis_lines = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("viewport axis lines"),
-            size: (2 * LINE_VERTEX_FLOATS * 4) as u64,
+            size: (LINE_INSTANCE_WORDS * 4) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -243,43 +231,54 @@ impl ViewportRenderer {
         self.scene_bounds
     }
 
-    /// Replaces the drawn geometry. Meshes or line sets that don't fit
-    /// 32-bit indices are skipped with a warning.
+    /// Replaces the drawn geometry.
+    ///
+    /// Meshes and line sets that can't be drawn are skipped with a warning:
+    /// mismatched normal, id or position counts, indices out of range, or
+    /// counts that don't fit 32-bit indices. Each mesh needs one id per
+    /// vertex and each line set one id per segment.
     pub fn set_scene(&mut self, device: &wgpu::Device, meshes: &[TriangleMesh], lines: &[LineSet]) {
+        let meshes: Vec<&TriangleMesh> = meshes
+            .iter()
+            .filter(|mesh| match mesh.check() {
+                Ok(()) => true,
+                Err(reason) => {
+                    tracing::warn!("skipping mesh: {reason}");
+                    false
+                }
+            })
+            .collect();
+        let lines: Vec<LineSet> = lines
+            .iter()
+            .filter(|set| match set.check() {
+                Ok(()) => true,
+                Err(reason) => {
+                    tracing::warn!("skipping line set: {reason}");
+                    false
+                }
+            })
+            .cloned()
+            .collect();
+
         self.scene_bounds = meshes
             .iter()
-            .map(TriangleMesh::bounds)
+            .map(|mesh| mesh.bounds())
             .chain(lines.iter().map(LineSet::bounds))
             .fold(Aabb3::EMPTY, Aabb3::union);
 
         self.meshes = meshes
             .iter()
             .filter_map(|mesh| {
-                if mesh.normals.len() != mesh.positions.len() {
-                    tracing::warn!("skipping mesh: normal count does not match position count");
-                    return None;
-                }
-                let vertex_count = u32::try_from(mesh.positions.len()).ok()?;
-                if mesh.indices.iter().any(|&i| i >= vertex_count) {
-                    tracing::warn!("skipping mesh: index out of range");
-                    return None;
-                }
                 let index_count = u32::try_from(mesh.indices.len()).ok()?;
-                let mut vertices = Vec::with_capacity(mesh.positions.len() * MESH_VERTEX_FLOATS);
-                for (p, n) in mesh.positions.iter().zip(&mesh.normals) {
-                    vertices.extend_from_slice(p);
-                    vertices.extend_from_slice(n);
-                    vertices.extend_from_slice(&mesh.color);
-                }
                 Some(GpuMesh {
                     vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("viewport mesh vertices"),
-                        contents: &f32_bytes(&vertices),
+                        contents: &pack::words_to_bytes(&pack::pack_mesh_vertices(mesh)),
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
                     indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("viewport mesh indices"),
-                        contents: &u32_bytes(&mesh.indices),
+                        contents: &pack::words_to_bytes(&mesh.indices),
                         usage: wgpu::BufferUsages::INDEX,
                     }),
                     index_count,
@@ -287,23 +286,17 @@ impl ViewportRenderer {
             })
             .collect();
 
-        let mut line_vertices = Vec::new();
-        for set in lines {
-            for p in &set.positions {
-                line_vertices.extend_from_slice(p);
-                line_vertices.extend_from_slice(&set.color);
-            }
-        }
-        self.lines = u32::try_from(line_vertices.len() / LINE_VERTEX_FLOATS)
+        let (instances, count) = pack::pack_line_instances(&lines);
+        self.lines = u32::try_from(count)
             .ok()
             .filter(|&n| n > 0)
-            .map(|vertex_count| GpuLines {
-                vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("viewport line vertices"),
-                    contents: &f32_bytes(&line_vertices),
+            .map(|instance_count| GpuLines {
+                instances: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("viewport line instances"),
+                    contents: &pack::words_to_bytes(&instances),
                     usage: wgpu::BufferUsages::VERTEX,
                 }),
-                vertex_count,
+                instance_count,
             });
     }
 
@@ -328,15 +321,13 @@ impl ViewportRenderer {
         queue.write_buffer(
             &self.globals,
             0,
-            &f32_bytes(&self.globals_data(camera, size, &grid)),
+            &pack::floats_to_bytes(&self.globals_data(camera, size, &grid)),
         );
         let axis_z = linear(self.theme.axis_z);
         let z_top = grid.fade_radius as f32 * 0.5;
-        let axis_vertices = [
-            0.0, 0.0, 0.0, axis_z[0], axis_z[1], axis_z[2], axis_z[3], //
-            0.0, 0.0, z_top, axis_z[0], axis_z[1], axis_z[2], axis_z[3],
-        ];
-        queue.write_buffer(&self.axis_lines, 0, &f32_bytes(&axis_vertices));
+        let axis_instance =
+            pack::pack_line_instance([0.0; 3], [0.0, 0.0, z_top], axis_z, 0, AXIS_Z_WIDTH);
+        queue.write_buffer(&self.axis_lines, 0, &pack::words_to_bytes(&axis_instance));
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("viewport"),
@@ -384,12 +375,12 @@ impl ViewportRenderer {
 
             pass.set_pipeline(&self.pipelines.lines);
             if let Some(lines) = &self.lines {
-                pass.set_vertex_buffer(0, lines.vertices.slice(..));
-                pass.draw(0..lines.vertex_count, 0..1);
+                pass.set_vertex_buffer(0, lines.instances.slice(..));
+                pass.draw(0..LINE_QUAD_VERTICES, 0..lines.instance_count);
             }
             if self.overlays.axes {
                 pass.set_vertex_buffer(0, self.axis_lines.slice(..));
-                pass.draw(0..2, 0..1);
+                pass.draw(0..LINE_QUAD_VERTICES, 0..1);
             }
 
             // Translucent grid last so it blends over what's already drawn.
@@ -524,160 +515,6 @@ impl GridLayout {
             half_extent: fade_radius,
             center: Point3::new(snap(camera.target.x), snap(camera.target.y), 0.0),
         }
-    }
-}
-
-/// The render pipelines of the viewport passes.
-struct Pipelines {
-    background: wgpu::RenderPipeline,
-    mesh: wgpu::RenderPipeline,
-    lines: wgpu::RenderPipeline,
-    grid: wgpu::RenderPipeline,
-}
-
-impl Pipelines {
-    fn new(device: &wgpu::Device, layout: &wgpu::PipelineLayout, sample_count: u32) -> Self {
-        let builder = PipelineBuilder {
-            device,
-            layout,
-            sample_count,
-        };
-        let background = builder.build(&PipelineSpec {
-            label: "viewport background",
-            source: include_str!("shaders/background.wgsl"),
-            vertex_layout: None,
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            depth_write: false,
-            depth_compare: wgpu::CompareFunction::Always,
-            blend: None,
-        });
-        let mesh = builder.build(&PipelineSpec {
-            label: "viewport meshes",
-            source: include_str!("shaders/mesh.wgsl"),
-            vertex_layout: Some(&[
-                wgpu::VertexFormat::Float32x3,
-                wgpu::VertexFormat::Float32x3,
-                wgpu::VertexFormat::Float32x4,
-            ]),
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            depth_write: true,
-            depth_compare: wgpu::CompareFunction::Greater,
-            blend: None,
-        });
-        let lines = builder.build(&PipelineSpec {
-            label: "viewport lines",
-            source: include_str!("shaders/lines.wgsl"),
-            vertex_layout: Some(&[wgpu::VertexFormat::Float32x3, wgpu::VertexFormat::Float32x4]),
-            topology: wgpu::PrimitiveTopology::LineList,
-            depth_write: true,
-            depth_compare: wgpu::CompareFunction::GreaterEqual,
-            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-        });
-        let grid = builder.build(&PipelineSpec {
-            label: "viewport grid",
-            source: include_str!("shaders/grid.wgsl"),
-            vertex_layout: None,
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            depth_write: false,
-            depth_compare: wgpu::CompareFunction::GreaterEqual,
-            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-        });
-        Self {
-            background,
-            mesh,
-            lines,
-            grid,
-        }
-    }
-}
-
-struct PipelineBuilder<'a> {
-    device: &'a wgpu::Device,
-    layout: &'a wgpu::PipelineLayout,
-    sample_count: u32,
-}
-
-struct PipelineSpec<'a> {
-    label: &'a str,
-    source: &'a str,
-    /// Attribute formats of the single vertex buffer, `None` for passes
-    /// that generate their vertices from the vertex index.
-    vertex_layout: Option<&'a [wgpu::VertexFormat]>,
-    topology: wgpu::PrimitiveTopology,
-    depth_write: bool,
-    depth_compare: wgpu::CompareFunction,
-    blend: Option<wgpu::BlendState>,
-}
-
-impl PipelineBuilder<'_> {
-    fn build(&self, spec: &PipelineSpec<'_>) -> wgpu::RenderPipeline {
-        let source = format!("{}\n{}", include_str!("shaders/globals.wgsl"), spec.source);
-        let module = self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(spec.label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-
-        let mut attributes = Vec::new();
-        let mut stride = 0;
-        for (location, &format) in spec.vertex_layout.unwrap_or_default().iter().enumerate() {
-            attributes.push(wgpu::VertexAttribute {
-                format,
-                offset: stride,
-                shader_location: location as u32,
-            });
-            stride += format.size();
-        }
-        let buffers = [Some(wgpu::VertexBufferLayout {
-            array_stride: stride,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &attributes,
-        })];
-        let buffers: &[Option<wgpu::VertexBufferLayout<'_>>] = if spec.vertex_layout.is_some() {
-            &buffers
-        } else {
-            &[]
-        };
-
-        self.device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(spec.label),
-                layout: Some(self.layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some("vs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers,
-                },
-                primitive: wgpu::PrimitiveState {
-                    topology: spec.topology,
-                    ..wgpu::PrimitiveState::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(spec.depth_write),
-                    depth_compare: Some(spec.depth_compare),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState {
-                    count: self.sample_count,
-                    ..wgpu::MultisampleState::default()
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some("fs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: OUTPUT_FORMAT,
-                        blend: spec.blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
     }
 }
 
