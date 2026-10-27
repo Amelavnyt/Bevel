@@ -14,6 +14,7 @@
 //!
 //! All coordinates handed to the writers are in millimetres.
 
+mod body;
 mod error;
 mod mesh;
 pub mod stl;
@@ -22,5 +23,6 @@ pub mod threemf;
 #[cfg(test)]
 mod test_util;
 
+pub use body::export_mesh;
 pub use error::IoError;
 pub use mesh::ExportMesh;
