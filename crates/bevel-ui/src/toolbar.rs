@@ -5,14 +5,14 @@
 //! lists all of its tools in a menu under the group label.
 
 use crate::tools::{self, Tool, ToolGroup};
-use crate::{UiState, theme, widgets};
+use crate::{UiAction, UiState, theme, widgets};
 
 const ICON: f32 = 28.0;
 const MENU_ICON: f32 = 18.0;
 /// Size of a toolbar button around its icon.
 const BUTTON: egui::Vec2 = egui::vec2(40.0, 38.0);
 
-pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState) {
+pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for (i, group) in ToolGroup::ALL.into_iter().enumerate() {
@@ -21,12 +21,12 @@ pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState) {
                 widgets::vertical_separator(ui);
                 ui.add_space(6.0);
             }
-            group_ui(ui, state, group);
+            group_ui(ui, state, actions, group);
         }
     });
 }
 
-fn group_ui(ui: &mut egui::Ui, state: &mut UiState, group: ToolGroup) {
+fn group_ui(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>, group: ToolGroup) {
     let label = egui::RichText::new(format!("{} ⏷", group.label()))
         .font(theme::caption_font())
         .color(theme::TEXT_WEAK);
@@ -63,7 +63,7 @@ fn group_ui(ui: &mut egui::Ui, state: &mut UiState, group: ToolGroup) {
                             )
                             .on_hover_ui(|ui| tooltip(ui, tool));
                         if response.clicked() {
-                            state.activate(tool);
+                            state.activate(tool, actions);
                         }
                     }
                 },
@@ -83,7 +83,7 @@ fn group_ui(ui: &mut egui::Ui, state: &mut UiState, group: ToolGroup) {
                         button = button.shortcut_text(key);
                     }
                     if ui.add(button).on_hover_ui(|ui| tooltip(ui, tool)).clicked() {
-                        state.activate(tool);
+                        state.activate(tool, actions);
                     }
                 }
             });

@@ -17,15 +17,14 @@
 //! There is a single design workspace: sketching, construction geometry and
 //! inspection are tools in it, as in other parametric CAD tools. While a
 //! sketch is open, the sketch tools take over the toolbar.
-//!
-//! Status: the layout and viewport controls exist; panel contents and tools
-//! arrive with the features they use (see the roadmap).
 
 mod appbar;
 mod browser;
+mod feature_dialog;
 pub mod icons;
 mod log;
 mod measure;
+mod parameters;
 pub mod theme;
 mod timeline;
 mod toolbar;
@@ -36,14 +35,44 @@ mod widgets;
 
 pub use log::{LogBuffer, LogLayer, LogLine};
 
+pub use bevel_doc::Command;
+pub use bevel_model::{BodyId, FeatureId, OriginPlane, PrimitiveKind};
 use bevel_render::{Projection, StandardView};
 
 /// How long notices stay on screen, in seconds.
 const NOTICE_SECONDS: f64 = 4.0;
 
 /// Something the user asked for that the application has to carry out.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UiAction {
+    /// Run a document command (the only way the document changes).
+    Command(Command),
+    /// Undo the last document change.
+    Undo,
+    /// Redo the last undone change.
+    Redo,
+    /// Start a new, empty document.
+    NewDocument,
+    /// Open a `.bevel` file.
+    Open,
+    /// Save to the current file (asks for one the first time).
+    Save,
+    /// Save to a new file.
+    SaveAs,
+    /// Open the sample document.
+    OpenSample,
+    /// Open the dialog for a new primitive.
+    NewPrimitive(PrimitiveKind),
+    /// Open the dialog for an existing feature.
+    EditFeature(FeatureId),
+    /// The open feature dialog's inputs changed: re-check and preview.
+    FeatureDialogChanged,
+    /// Accept the open feature dialog.
+    FeatureDialogOk,
+    /// Close the open feature dialog without changes.
+    FeatureDialogCancel,
+    /// Show or hide a body.
+    SetBodyVisible(BodyId, bool),
     /// Frame everything in the viewport.
     FitAll,
     /// Turn the camera to a standard view.
@@ -88,10 +117,125 @@ impl ExportFormat {
 /// A body as the browser shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BodyEntry {
+    /// Stable id.
+    pub id: BodyId,
     /// Display name.
     pub name: String,
     /// Whether it is drawn and exported.
     pub visible: bool,
+}
+
+/// How a timeline step fared in the last rebuild.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StepState {
+    /// Built.
+    Ok,
+    /// Built, with a warning.
+    Warning(String),
+    /// Failed, with the reason.
+    Error(String),
+    /// Not built because an input is missing or failed, with the reason.
+    Skipped(String),
+    /// Suppressed by the user.
+    Suppressed,
+    /// After the rollback marker.
+    RolledBack,
+}
+
+/// A feature as the timeline shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelineEntry {
+    /// Stable id.
+    pub id: FeatureId,
+    /// Display name, e.g. "Box1".
+    pub name: String,
+    /// The feature's kind, for its icon.
+    pub kind: PrimitiveKind,
+    /// The features it depends on; it cannot move before them.
+    pub deps: Vec<FeatureId>,
+    /// Whether it is suppressed.
+    pub suppressed: bool,
+    /// The last rebuild's outcome.
+    pub state: StepState,
+}
+
+/// A parameter as the Parameters dialog shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParamRow {
+    /// Name.
+    pub name: String,
+    /// Expression as typed.
+    pub expression: String,
+    /// The formatted value, or the error.
+    pub value: Result<String, String>,
+    /// Comment.
+    pub comment: String,
+    /// Whether it belongs to a feature input (`d1`, ...) rather than the user.
+    pub model: bool,
+    /// The features and parameters that read it.
+    pub used_by: Vec<String>,
+}
+
+/// The document as the UI shows it; the app refreshes it after every
+/// change and rebuild.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DocView {
+    /// The document's name, e.g. "Untitled" or the file name.
+    pub title: String,
+    /// Whether there are unsaved changes.
+    pub modified: bool,
+    /// The features in timeline order.
+    pub timeline: Vec<TimelineEntry>,
+    /// How many features run.
+    pub marker: usize,
+    /// User parameters first, then model parameters.
+    pub parameters: Vec<ParamRow>,
+    /// Symbol of the default length unit, e.g. "mm".
+    pub units: String,
+    /// Label of the change Undo would undo.
+    pub undo: Option<String>,
+    /// Label of the change Redo would redo.
+    pub redo: Option<String>,
+    /// Whether a rebuild is running.
+    pub rebuilding: bool,
+}
+
+/// The open dialog for a new or edited primitive. The dialog edits the
+/// texts; the app checks them and fills in `errors`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeatureDialog {
+    /// The feature being edited, or `None` for a new one.
+    pub editing: Option<FeatureId>,
+    /// Which primitive.
+    pub kind: PrimitiveKind,
+    /// The plane it stands on.
+    pub plane: OriginPlane,
+    /// One expression per field of [`PrimitiveKind::fields`].
+    pub values: Vec<String>,
+    /// The error for each field, if any, filled in by the app.
+    pub errors: Vec<Option<String>>,
+    /// An error for the whole feature (e.g. the kernel refused it).
+    pub error: Option<String>,
+}
+
+impl FeatureDialog {
+    /// A dialog for a new primitive with the default values.
+    pub fn new(kind: PrimitiveKind) -> Self {
+        let fields = kind.fields();
+        Self {
+            editing: None,
+            kind,
+            plane: OriginPlane::Xy,
+            values: fields.iter().map(|f| f.default.to_owned()).collect(),
+            errors: vec![None; fields.len()],
+            error: None,
+        }
+    }
+
+    /// Whether every field is valid and the feature builds.
+    pub fn is_valid(&self) -> bool {
+        self.error.is_none() && self.errors.iter().all(Option::is_none)
+    }
 }
 
 /// One result in the Measure dialog.
@@ -171,6 +315,15 @@ pub struct UiState {
     pub measure_open: bool,
     /// Decimal places the Measure dialog shows.
     pub measure_decimals: usize,
+    /// The document, as the timeline, browser and dialogs show it.
+    pub doc: DocView,
+    /// The open feature dialog, if any.
+    pub feature_dialog: Option<FeatureDialog>,
+    /// Whether the Parameters dialog is open.
+    pub show_parameters: bool,
+    /// The feature under the cursor in the timeline, for highlighting what
+    /// it built.
+    pub hovered_feature: Option<FeatureId>,
     /// Current time, for timing notices; updated every frame.
     now: f64,
 }
@@ -192,6 +345,14 @@ impl Default for UiState {
             notice: None,
             bodies: Vec::new(),
             selection: None,
+            doc: DocView {
+                title: "Untitled".to_owned(),
+                units: "mm".to_owned(),
+                ..DocView::default()
+            },
+            feature_dialog: None,
+            show_parameters: false,
+            hovered_feature: None,
             now: 0.0,
         }
     }
@@ -208,9 +369,13 @@ impl UiState {
 
     /// Runs a toolbar tool: opens it if it exists, otherwise says when it
     /// arrives.
-    fn activate(&mut self, tool: &tools::Tool) {
+    fn activate(&mut self, tool: &tools::Tool, actions: &mut Vec<UiAction>) {
         if tool.name == tools::MEASURE {
             self.measure_open = true;
+        } else if tool.name == tools::PARAMETERS {
+            self.show_parameters = true;
+        } else if let Some(kind) = tools::primitive(tool) {
+            actions.push(UiAction::NewPrimitive(kind));
         } else {
             self.notify_unavailable(tool.name, tool.phase);
         }
@@ -257,12 +422,12 @@ pub fn workbench(
         .show(ui, |ui| appbar::show(ui, state, &mut actions));
     egui::Panel::top("toolbar")
         .frame(bar_frame(egui::Margin::symmetric(8, 4)))
-        .show(ui, |ui| toolbar::show(ui, state));
+        .show(ui, |ui| toolbar::show(ui, state, &mut actions));
     egui::Panel::bottom("timeline")
         .frame(bar_frame(egui::Margin::symmetric(8, 5)))
         .resizable(false)
         .exact_size(40.0)
-        .show(ui, timeline::show);
+        .show(ui, |ui| timeline::show(ui, state, &mut actions));
     if state.show_log {
         egui::Panel::bottom("log")
             .resizable(true)
@@ -282,6 +447,12 @@ pub fn workbench(
     if state.measure_open {
         measure::show(ui.ctx(), state);
     }
+    if state.feature_dialog.is_some() {
+        feature_dialog::show(ui.ctx(), state, &mut actions);
+    }
+    if state.show_parameters {
+        parameters::show(ui.ctx(), state, &mut actions);
+    }
     if state.show_about {
         about_window(ui.ctx(), &mut state.show_about);
     }
@@ -292,10 +463,40 @@ pub fn workbench(
     if ui.input(|i| i.key_pressed(egui::Key::Home)) {
         actions.push(UiAction::FitAll);
     }
+    shortcuts(ui, typing, &mut actions);
     if !typing && ui.input(|i| i.key_pressed(egui::Key::M)) {
         state.measure_open = !state.measure_open;
     }
     actions
+}
+
+/// Document shortcuts: undo, redo, save, new and open.
+fn shortcuts(ui: &egui::Ui, typing: bool, actions: &mut Vec<UiAction>) {
+    use egui::{Key, KeyboardShortcut, Modifiers};
+    let shortcut = |mods, key| {
+        ui.ctx()
+            .input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(mods, key)))
+    };
+    let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
+    if shortcut(cmd_shift, Key::S) {
+        actions.push(UiAction::SaveAs);
+    } else if shortcut(Modifiers::COMMAND, Key::S) {
+        actions.push(UiAction::Save);
+    }
+    if shortcut(Modifiers::COMMAND, Key::O) {
+        actions.push(UiAction::Open);
+    }
+    if shortcut(Modifiers::COMMAND, Key::N) {
+        actions.push(UiAction::NewDocument);
+    }
+    // Text fields keep their own undo.
+    if !typing {
+        if shortcut(cmd_shift, Key::Z) || shortcut(Modifiers::COMMAND, Key::Y) {
+            actions.push(UiAction::Redo);
+        } else if shortcut(Modifiers::COMMAND, Key::Z) {
+            actions.push(UiAction::Undo);
+        }
+    }
 }
 
 fn about_window(ctx: &egui::Context, open: &mut bool) {
@@ -408,10 +609,18 @@ mod tests {
         UiState {
             bodies: vec![
                 BodyEntry {
+                    id: BodyId {
+                        feature: FeatureId(1),
+                        index: 0,
+                    },
                     name: "Box".to_owned(),
                     visible: true,
                 },
                 BodyEntry {
+                    id: BodyId {
+                        feature: FeatureId(2),
+                        index: 0,
+                    },
                     name: "Torus".to_owned(),
                     visible: false,
                 },

@@ -439,6 +439,8 @@ dependencies = [
  "eframe",
  "egui",
  "rfd",
+ "serde",
+ "serde_json",
  "slotmap",
  "tracing",
  "tracing-subscriber",
@@ -607,6 +609,7 @@ name = "bevel-ui"
 version = "0.1.0"
 dependencies = [
  "bevel-doc",
+ "bevel-expr",
  "bevel-math",
  "bevel-model",
  "bevel-render",

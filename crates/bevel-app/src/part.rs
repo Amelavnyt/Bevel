@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The part shown until documents exist: the five kernel primitives as real
-//! B-rep bodies. It turns bodies into the renderer's plain buffers, keeps the
-//! table that maps pick ids back to faces and edges, measures selections for
-//! the Measure dialog, and exports meshes.
+//! The bodies of the last rebuild as the viewport sees them. It turns bodies
+//! into the renderer's plain buffers, keeps the table that maps pick ids
+//! back to faces and edges, measures selections for the Measure dialog, and
+//! exports meshes.
 
+use crate::rebuild::{Built, Mass};
 use bevel_geom::{Curve3, Surface};
 use bevel_kernel::{
-    Body, BodyMesh, BoxParams, ConeParams, CylinderParams, EdgeKey, FaceKey, KernelError,
-    MassProperties, OpContext, OpTag, Role, SphereParams, TessellationOptions, TopoName,
-    TorusParams, edge_length, face_area, mass_properties, tessellate,
+    Body, BodyMesh, EdgeKey, FaceKey, OpContext, Role, TessellationOptions, TopoName, edge_length,
+    face_area, tessellate,
 };
-use bevel_math::{Frame3, Point3, Vector3};
+use bevel_model::BodyId;
 use bevel_render::{LineSet, TriangleMesh};
 use bevel_ui::{ExportFormat, MeasureValue, Measurement, SelectionInfo};
 use std::sync::Arc;
@@ -25,14 +25,16 @@ const EDGE: [f32; 4] = [0.02, 0.02, 0.03, 1.0];
 
 /// One body with everything derived from it.
 pub struct PartBody {
+    /// Stable id.
+    pub id: BodyId,
     /// Display name.
     pub name: String,
     /// The B-rep.
     pub body: Arc<Body>,
     /// Display tessellation.
     pub mesh: BodyMesh,
-    /// Volume, area, centre of mass and inertia.
-    pub mass: MassProperties,
+    /// Volume, area and centre of mass.
+    pub mass: Mass,
 }
 
 /// Something that can be picked or selected.
@@ -80,97 +82,22 @@ pub struct Part {
     pub bodies: Vec<PartBody>,
 }
 
-fn at(x: f64, y: f64, z: f64) -> Frame3 {
-    Frame3 {
-        origin: Point3::new(x, y, z),
-        ..Frame3::WORLD
-    }
-}
-
 impl Part {
-    /// The demonstration part: one of each primitive, side by side.
-    ///
-    /// # Errors
-    ///
-    /// Any error from building, tessellating or measuring the bodies.
-    pub fn demo() -> Result<Self, KernelError> {
-        let mut cx = OpContext::new();
-        let outputs = [
-            (
-                "Box",
-                bevel_kernel::box_(
-                    &BoxParams {
-                        frame: at(-150.0, -20.0, 0.0),
-                        size: Vector3::splat(40.0),
-                    },
-                    OpTag(1),
-                    &mut cx,
-                )?,
-            ),
-            (
-                "Cylinder",
-                bevel_kernel::cylinder(
-                    &CylinderParams {
-                        frame: at(-75.0, 0.0, 0.0),
-                        radius: 20.0,
-                        height: 40.0,
-                    },
-                    OpTag(2),
-                    &mut cx,
-                )?,
-            ),
-            (
-                "Sphere",
-                bevel_kernel::sphere(
-                    &SphereParams {
-                        frame: at(0.0, 0.0, 22.0),
-                        radius: 22.0,
-                    },
-                    OpTag(3),
-                    &mut cx,
-                )?,
-            ),
-            (
-                "Cone",
-                bevel_kernel::cone(
-                    &ConeParams {
-                        frame: at(75.0, 0.0, 0.0),
-                        bottom_radius: 22.0,
-                        top_radius: 10.0,
-                        height: 40.0,
-                    },
-                    OpTag(4),
-                    &mut cx,
-                )?,
-            ),
-            (
-                "Torus",
-                bevel_kernel::torus(
-                    &TorusParams {
-                        frame: at(150.0, 0.0, 9.0),
-                        major_radius: 21.0,
-                        minor_radius: 9.0,
-                    },
-                    OpTag(5),
-                    &mut cx,
-                )?,
-            ),
-        ];
-        let mut bodies = Vec::new();
-        for (name, output) in outputs {
-            for body in output.bodies {
-                let options = TessellationOptions::fine(&body.bounds());
-                let mesh = tessellate(&body, &options, &cx)?;
-                let mass = mass_properties(&body, &cx)?;
-                bodies.push(PartBody {
-                    name: name.to_owned(),
-                    body,
-                    mesh,
-                    mass,
-                });
-            }
+    /// The bodies of a rebuild, named by `name`.
+    pub fn from_built(built: &Built, name: &dyn Fn(BodyId) -> String) -> Self {
+        Self {
+            bodies: built
+                .bodies
+                .iter()
+                .map(|b| PartBody {
+                    id: b.id,
+                    name: name(b.id),
+                    body: Arc::clone(&b.body),
+                    mesh: b.mesh.clone(),
+                    mass: b.mass,
+                })
+                .collect(),
         }
-        Ok(Self { bodies })
     }
 
     fn visible<'a>(&'a self, visible: &'a [bool]) -> impl Iterator<Item = (usize, &'a PartBody)> {
@@ -437,9 +364,18 @@ fn curve_kind(curve: &Curve3) -> &'static str {
 mod tests {
     use super::*;
 
+    /// The sample document's five primitives, built as the app builds them.
+    fn sample() -> Part {
+        let state = bevel_doc::sample::primitives();
+        let built =
+            crate::rebuild::build(&mut bevel_model::Regenerator::new(), &state.part, 1, None)
+                .unwrap();
+        Part::from_built(&built, &|id| state.body_name(id))
+    }
+
     #[test]
     fn demo_part_has_five_valid_bodies() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         assert_eq!(part.bodies.len(), 5);
         for b in &part.bodies {
             assert!(
@@ -453,7 +389,7 @@ mod tests {
 
     #[test]
     fn pick_ids_map_back_to_their_targets() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         let scene = part.render_scene(&[true; 5]);
         assert!(!scene.targets.is_empty());
         for (i, &target) in scene.targets.iter().enumerate() {
@@ -473,7 +409,7 @@ mod tests {
 
     #[test]
     fn hidden_bodies_are_not_drawn_or_exported() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         let visible = [true, false, false, false, false];
         let scene = part.render_scene(&visible);
         assert!(scene.targets.iter().all(|t| t.body() == 0));
@@ -484,7 +420,7 @@ mod tests {
 
     #[test]
     fn exported_3mf_is_watertight_per_body() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         let bytes = part.export(&[true; 5], ExportFormat::ThreeMf).unwrap();
         let meshes = bevel_io::threemf::read(&bytes).unwrap();
         assert_eq!(meshes.len(), 5);
@@ -493,9 +429,9 @@ mod tests {
 
     #[test]
     fn selecting_all_faces_of_a_body_names_the_body() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         let info = part.selection_info(&part.body_faces(2)).unwrap();
-        assert_eq!(info.title, "Sphere");
+        assert_eq!(info.title, "Sphere1");
         assert!(info.measurements.iter().any(|m| m.label == "Volume"));
     }
 
@@ -514,7 +450,7 @@ mod tests {
 
     #[test]
     fn seams_are_neither_drawn_nor_pickable() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         let scene = part.render_scene(&[true; 5]);
         for target in &scene.targets {
             if let Target::Edge { body, edge } = *target {
@@ -533,7 +469,7 @@ mod tests {
 
     #[test]
     fn a_face_and_an_edge_are_measured() {
-        let part = Part::demo().unwrap();
+        let part = sample();
         let cylinder = &part.bodies[1].body;
         let (side, _) = cylinder
             .faces()

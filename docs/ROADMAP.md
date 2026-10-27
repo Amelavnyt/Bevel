@@ -47,9 +47,9 @@ The CPU ray cast for exact hit points and silhouette edges of curved faces moved
 - [x] bevel-model: primitive features, origin, regeneration with cache
 - [x] bevel-doc: commands, undo/redo, object store
 - [x] `.bevel` v1 with migration scaffold
-- [ ] Browser tree
-- [ ] Part timeline widget (marker, reorder, suppress, edit)
-- [ ] Parameters dialog
+- [x] Browser tree
+- [x] Part timeline widget (marker, reorder, suppress, edit)
+- [x] Parameters dialog
 - [x] CLI `rebuild`, `info` and `export`
 
 ## Phase 4: Booleans

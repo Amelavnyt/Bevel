@@ -20,7 +20,7 @@ pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiA
                 true,
                 None,
                 Icon::Document,
-                "Untitled",
+                &state.doc.title.clone(),
                 |ui, _| {
                     node(
                         ui,
@@ -43,48 +43,19 @@ pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiA
                             }
                         },
                     );
-                    for (id, icon, name, empty) in [
-                        (
-                            "parameters",
-                            Icon::Parameters,
-                            "Parameters",
-                            "No parameters",
-                        ),
-                        ("sketches", Icon::Folder, "Sketches", "No sketches"),
-                    ] {
-                        node(ui, id, false, None, icon, name, |ui, _| {
-                            empty_note(ui, empty);
-                        });
-                    }
-                    let bodies = &mut state.bodies;
-                    node(ui, "bodies", true, None, Icon::Folder, "Bodies", |ui, _| {
-                        if bodies.is_empty() {
-                            empty_note(ui, "No bodies");
-                        }
-                        for (index, body) in bodies.iter_mut().enumerate() {
-                            ui.horizontal(|ui| {
-                                ui.add_space(4.0);
-                                visibility_toggle(ui, &mut body.visible, &body.name);
-                                let tint = if body.visible {
-                                    egui::Color32::WHITE
-                                } else {
-                                    egui::Color32::from_white_alpha(90)
-                                };
-                                ui.add(Icon::Body.image(ROW_ICON).tint(tint));
-                                let color = if body.visible {
-                                    theme::TEXT
-                                } else {
-                                    theme::TEXT_WEAK
-                                };
-                                let label =
-                                    egui::Label::new(egui::RichText::new(&body.name).color(color))
-                                        .sense(egui::Sense::click());
-                                if ui.add(label).clicked() {
-                                    actions.push(UiAction::SelectBody(index));
-                                }
-                            });
-                        }
-                    });
+                    parameters_node(ui, state);
+                    node(
+                        ui,
+                        "sketches",
+                        false,
+                        None,
+                        Icon::Folder,
+                        "Sketches",
+                        |ui, _| {
+                            empty_note(ui, "No sketches");
+                        },
+                    );
+                    bodies_node(ui, state, actions);
                     node(
                         ui,
                         "construction",
@@ -99,6 +70,77 @@ pub(crate) fn show(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiA
                 },
             );
         });
+}
+
+/// The user parameters with their values, and a link to the dialog.
+fn parameters_node(ui: &mut egui::Ui, state: &mut UiState) {
+    let parameters = &state.doc.parameters;
+    let mut open = false;
+    node(
+        ui,
+        "parameters",
+        false,
+        None,
+        Icon::Parameters,
+        "Parameters",
+        |ui, _| {
+            let user: Vec<_> = parameters.iter().filter(|p| !p.model).collect();
+            if user.is_empty() {
+                empty_note(ui, "No user parameters");
+            }
+            for p in user {
+                let text = match &p.value {
+                    Ok(v) => format!("{} = {v}", p.name),
+                    Err(_) => format!("{} = ?", p.name),
+                };
+                leaf(ui, Icon::Parameters, &text, true);
+            }
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                let link = egui::Link::new(egui::RichText::new("Change parameters…").small());
+                open = ui.add(link).clicked();
+            });
+        },
+    );
+    if open {
+        state.show_parameters = true;
+    }
+}
+
+/// The bodies with visibility toggles; clicking a name selects the body.
+fn bodies_node(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<UiAction>) {
+    let bodies = &mut state.bodies;
+    node(ui, "bodies", true, None, Icon::Folder, "Bodies", |ui, _| {
+        if bodies.is_empty() {
+            empty_note(ui, "No bodies");
+        }
+        for (index, body) in bodies.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                let was = body.visible;
+                visibility_toggle(ui, &mut body.visible, &body.name);
+                if body.visible != was {
+                    actions.push(UiAction::SetBodyVisible(body.id, body.visible));
+                }
+                let tint = if body.visible {
+                    egui::Color32::WHITE
+                } else {
+                    egui::Color32::from_white_alpha(90)
+                };
+                ui.add(Icon::Body.image(ROW_ICON).tint(tint));
+                let color = if body.visible {
+                    theme::TEXT
+                } else {
+                    theme::TEXT_WEAK
+                };
+                let label = egui::Label::new(egui::RichText::new(&body.name).color(color))
+                    .sense(egui::Sense::click());
+                if ui.add(label).clicked() {
+                    actions.push(UiAction::SelectBody(index));
+                }
+            });
+        }
+    });
 }
 
 /// A collapsible tree row with an optional visibility toggle. `body`
