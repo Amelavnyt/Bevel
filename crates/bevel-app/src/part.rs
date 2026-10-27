@@ -221,7 +221,12 @@ impl Part {
                 color: EDGE,
                 ..LineSet::default()
             };
+            // Seams are where a periodic surface's parameters wrap around,
+            // not edges anyone drew; they are neither shown nor pickable.
             for polyline in &part_body.mesh.edges {
+                if part_body.body.is_seam(polyline.edge) {
+                    continue;
+                }
                 let id = next_id(
                     &mut scene,
                     Target::Edge {
@@ -439,5 +444,24 @@ mod tests {
         let info = part.selection_info(&part.body_faces(2)).unwrap();
         assert_eq!(info.title, "Sphere");
         assert!(info.rows.iter().any(|(label, _)| label == "Volume"));
+    }
+
+    #[test]
+    fn seams_are_neither_drawn_nor_pickable() {
+        let part = Part::demo().unwrap();
+        let scene = part.render_scene(&[true; 5]);
+        for target in &scene.targets {
+            if let Target::Edge { body, edge } = *target {
+                assert!(!part.bodies[body].body.is_seam(edge));
+            }
+        }
+        // The sphere's only face is bounded by a seam and two poles, so it
+        // shows no edges at all.
+        assert!(
+            !scene
+                .targets
+                .iter()
+                .any(|t| matches!(t, Target::Edge { body: 2, .. }))
+        );
     }
 }
