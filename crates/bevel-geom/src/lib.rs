@@ -57,6 +57,11 @@
 //!   derivatives of any order, outward normals, principal curvatures (the
 //!   sign convention of [`Curvatures`]), closest points, isocurves as lines
 //!   and circles, and exact bounding boxes of patches.
+//! - [`analytic::convert`]: exact NURBS forms of every analytic type over
+//!   a parameter range (degree-1 lines, bilinear planes, rational
+//!   quadratic arcs, surfaces of revolution), with a [`ParamMap`] per
+//!   direction relating the NURBS parameters to the analytic ones in
+//!   closed form.
 //!
 //! The curve arc length still uses a local copy of the Gauss-Legendre
 //! rules; the closest-point iterations keep their own Newton loops, since
@@ -78,8 +83,8 @@ mod knots;
 mod nurbs;
 
 pub use analytic::{
-    Circle2, Circle3, Cone, Cylinder, Domain, Ellipse2, Ellipse3, Line2, Line3, Plane, Sphere,
-    Torus,
+    Circle2, Circle3, Cone, ConvertedCurve, ConvertedSurface, Cylinder, Domain, Ellipse2, Ellipse3,
+    Line2, Line3, ParamMap, Plane, Sphere, Torus,
 };
 pub use conics::{circle_arc, circle_arc_2d, conic_arc, ellipse_arc, ellipse_arc_2d};
 pub use error::GeomError;

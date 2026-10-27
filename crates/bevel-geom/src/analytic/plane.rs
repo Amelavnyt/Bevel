@@ -9,8 +9,11 @@
 
 use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
 
+use super::convert::{ConvertedSurface, ParamMap, check_open_range};
 use super::{Domain, Line3, check_frame, check_point3, check_range, unit3};
-use crate::{Curvatures, GeomError, MAX_DERIVATIVE_ORDER, SurfaceClosestPoint};
+use crate::{
+    Curvatures, GeomError, KnotVector, MAX_DERIVATIVE_ORDER, NurbsSurface, SurfaceClosestPoint,
+};
 
 /// An unbounded plane: `S(u, v) = o + u x + v y` in the frame `(o, x, y,
 /// z)`, with normal `z`.
@@ -172,5 +175,41 @@ impl Plane {
             self.point(u.min, v.max),
             self.point(u.max, v.max),
         ]))
+    }
+
+    /// The rectangle `u x v` as a bilinear NURBS patch on the domain
+    /// `u x v`, whose parameters are the plane's ([`ParamMap::Identity`]
+    /// in both directions).
+    ///
+    /// # Errors
+    ///
+    /// [`GeomError::NonFinite`] for a non-finite range and
+    /// [`GeomError::InvalidArgument`] for one of zero length.
+    pub fn to_nurbs_mapped(&self, u: Interval, v: Interval) -> Result<ConvertedSurface, GeomError> {
+        check_open_range(u)?;
+        check_open_range(v)?;
+        let ku = KnotVector::clamped_from_interior(1, u.min, u.max, &[])?;
+        let kv = KnotVector::clamped_from_interior(1, v.min, v.max, &[])?;
+        let points = [
+            self.point(u.min, v.min),
+            self.point(u.min, v.max),
+            self.point(u.max, v.min),
+            self.point(u.max, v.max),
+        ];
+        let nurbs = NurbsSurface::from_points(1, 1, ku, kv, &points, None)?;
+        Ok(ConvertedSurface {
+            nurbs,
+            map_u: ParamMap::Identity,
+            map_v: ParamMap::Identity,
+        })
+    }
+
+    /// [`Self::to_nurbs_mapped`] without the maps.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::to_nurbs_mapped`].
+    pub fn to_nurbs(&self, u: Interval, v: Interval) -> Result<NurbsSurface, GeomError> {
+        self.to_nurbs_mapped(u, v).map(|c| c.nurbs)
     }
 }

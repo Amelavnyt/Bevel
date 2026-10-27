@@ -27,11 +27,14 @@
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
-use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
+use bevel_math::{Aabb3, DVec4, Frame3, Interval, Point3, Vector3};
 
+use super::convert::{ConvertedSurface, ParamMap, revolve, segment_curve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
-use super::{Circle3, Domain, FULL_TURN, Line3, check_frame, check_point3, wrap_angle};
-use crate::{Curvatures, GeomError, SurfaceClosestPoint};
+use super::{
+    Circle3, Domain, FULL_TURN, Line3, check_frame, check_point3, check_range, wrap_angle,
+};
+use crate::{Curvatures, GeomError, NurbsSurface, SurfaceClosestPoint};
 
 /// Relative size of `rho(v)` at or below which `v` is the apex.
 const APEX_TOLERANCE: f64 = 1e-12;
@@ -264,5 +267,37 @@ impl Cone {
     /// [`GeomError::NonFinite`] for a non-finite range.
     pub fn bounds(&self, u: Interval, v: Interval) -> Result<Aabb3, GeomError> {
         revolved_bounds(&self.frame, u, v, false, |u, v| self.point(u, v))
+    }
+
+    /// The patch over `u x v` as an exact NURBS: the line segment at angle
+    /// `u.min` revolved about the axis with
+    /// [`NurbsSurface::revolution`], on the domain `u x v`. `u` follows
+    /// the arc map of [`analytic::convert`](crate::analytic::convert) and
+    /// `v` is unchanged.
+    ///
+    /// # Errors
+    ///
+    /// [`GeomError::NonFinite`] for a non-finite range and
+    /// [`GeomError::InvalidArgument`] for one of zero length, or a `u` range longer than a full turn.
+    pub fn to_nurbs_mapped(&self, u: Interval, v: Interval) -> Result<ConvertedSurface, GeomError> {
+        check_range(u)?;
+        let profile =
+            segment_curve::<DVec4>(self.point(u.min, v.min), self.point(u.min, v.max), v)?;
+        let nurbs = revolve(&self.frame, &profile, u)?;
+        let map_u = ParamMap::arc(nurbs.knots_u());
+        Ok(ConvertedSurface {
+            nurbs,
+            map_u,
+            map_v: ParamMap::Identity,
+        })
+    }
+
+    /// [`Self::to_nurbs_mapped`] without the maps.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::to_nurbs_mapped`].
+    pub fn to_nurbs(&self, u: Interval, v: Interval) -> Result<NurbsSurface, GeomError> {
+        self.to_nurbs_mapped(u, v).map(|c| c.nurbs)
     }
 }

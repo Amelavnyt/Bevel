@@ -24,12 +24,13 @@
 
 use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
 
+use super::convert::{ConvertedSurface, ParamMap, revolve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
 use super::{
-    Circle3, Domain, FULL_TURN, check_frame, check_point3, check_radius, trig_derivative,
-    wrap_angle,
+    Circle3, Domain, FULL_TURN, check_frame, check_point3, check_radius, check_range,
+    trig_derivative, wrap_angle,
 };
-use crate::{Curvatures, GeomError, SurfaceClosestPoint};
+use crate::{Curvatures, GeomError, NurbsSurface, SurfaceClosestPoint, circle_arc};
 
 /// A ring torus: `S(u, v) = o + (R + r cos(v)) e(u) + r sin(v) z` in the
 /// frame `(o, x, y, z)`.
@@ -213,5 +214,53 @@ impl Torus {
     /// [`GeomError::NonFinite`] for a non-finite range.
     pub fn bounds(&self, u: Interval, v: Interval) -> Result<Aabb3, GeomError> {
         revolved_bounds(&self.frame, u, v, true, |u, v| self.point(u, v))
+    }
+
+    /// The patch over `u x v` as an exact NURBS: the arc of the tube circle
+    /// at angle `u.min` revolved about the axis with
+    /// [`NurbsSurface::revolution`], on the domain `u x v`. Both
+    /// directions follow the arc map of
+    /// [`analytic::convert`](crate::analytic::convert).
+    ///
+    /// # Errors
+    ///
+    /// [`GeomError::NonFinite`] for a non-finite range and
+    /// [`GeomError::InvalidArgument`] for one of zero length, or a range longer than a full turn.
+    pub fn to_nurbs_mapped(&self, u: Interval, v: Interval) -> Result<ConvertedSurface, GeomError> {
+        check_range(u)?;
+        let (e, _) = radial(&self.frame, u.min);
+        let tube = Frame3 {
+            origin: self.frame.origin + e * self.major,
+            x: e,
+            y: self.frame.z,
+            z: e.cross(self.frame.z),
+        };
+        let profile = circle_arc(&tube, self.minor, v.min, v.max)?;
+        let nurbs = revolve(&self.frame, &profile, u)?;
+        let map_u = ParamMap::arc(nurbs.knots_u());
+        let map_v = ParamMap::arc(nurbs.knots_v());
+        Ok(ConvertedSurface {
+            nurbs,
+            map_u,
+            map_v,
+        })
+    }
+
+    /// [`Self::to_nurbs_mapped`] without the maps.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::to_nurbs_mapped`].
+    pub fn to_nurbs(&self, u: Interval, v: Interval) -> Result<NurbsSurface, GeomError> {
+        self.to_nurbs_mapped(u, v).map(|c| c.nurbs)
+    }
+
+    /// The whole surface as a NURBS: [`Self::to_nurbs`] over `[0, 2 pi] x [0, 2 pi]`.
+    ///
+    /// # Errors
+    ///
+    /// None in practice; the signature matches [`Self::to_nurbs`].
+    pub fn to_nurbs_full(&self) -> Result<NurbsSurface, GeomError> {
+        self.to_nurbs(FULL_TURN, FULL_TURN)
     }
 }

@@ -8,5 +8,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod curves;
+mod nurbs;
 mod strategies;
 mod surfaces;

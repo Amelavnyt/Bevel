@@ -7,10 +7,11 @@
 //! unbounded (the topology bounds edges). Reversal negates `d` and keeps
 //! `o`, so the reversed line at `-t` is the original at `t`.
 
-use bevel_math::{Aabb2, Aabb3, Interval, Point2, Point3, Vector2, Vector3};
+use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Interval, Point2, Point3, Vector2, Vector3};
 
+use super::convert::{ConvertedCurve, ParamMap, segment_curve};
 use super::{Domain, check_point2, check_point3, check_range, derivative_count, unit2, unit3};
-use crate::{ClosestPoint, GeomError};
+use crate::{ClosestPoint, GeomError, NurbsCurve};
 
 /// An unbounded straight line in the plane: `C(t) = origin + t direction`
 /// with a unit direction.
@@ -32,7 +33,7 @@ pub struct Line3 {
 
 /// Generates the parts shared by [`Line2`] and [`Line3`].
 macro_rules! line_common {
-    ($line:ident, $point:ty, $vector:ty, $aabb:ty, $check:ident, $unit:ident) => {
+    ($line:ident, $point:ty, $vector:ty, $aabb:ty, $h:ty, $check:ident, $unit:ident) => {
         impl $line {
             /// The line through `origin` along `direction`, which is
             /// normalised (any non-zero length is accepted).
@@ -141,12 +142,41 @@ macro_rules! line_common {
             pub fn reversed_parameter(&self, t: f64) -> f64 {
                 -t
             }
+
+            /// The segment over `range` as a degree-1 NURBS on the domain
+            /// `range`, whose parameter is the line's
+            /// ([`ParamMap::Identity`]).
+            ///
+            /// # Errors
+            ///
+            /// [`GeomError::NonFinite`] for a non-finite range and
+            /// [`GeomError::InvalidArgument`] for one of zero length.
+            pub fn to_nurbs_mapped(
+                &self,
+                range: Interval,
+            ) -> Result<ConvertedCurve<$h>, GeomError> {
+                let nurbs =
+                    segment_curve::<$h>(self.point(range.min), self.point(range.max), range)?;
+                Ok(ConvertedCurve {
+                    nurbs,
+                    map: ParamMap::Identity,
+                })
+            }
+
+            /// [`Self::to_nurbs_mapped`] without the map.
+            ///
+            /// # Errors
+            ///
+            /// As [`Self::to_nurbs_mapped`].
+            pub fn to_nurbs(&self, range: Interval) -> Result<NurbsCurve<$h>, GeomError> {
+                self.to_nurbs_mapped(range).map(|c| c.nurbs)
+            }
         }
     };
 }
 
-line_common!(Line2, Point2, Vector2, Aabb2, check_point2, unit2);
-line_common!(Line3, Point3, Vector3, Aabb3, check_point3, unit3);
+line_common!(Line2, Point2, Vector2, Aabb2, DVec3, check_point2, unit2);
+line_common!(Line3, Point3, Vector3, Aabb3, DVec4, check_point3, unit3);
 
 #[cfg(test)]
 mod tests {

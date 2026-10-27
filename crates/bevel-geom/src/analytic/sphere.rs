@@ -23,9 +23,17 @@ use std::f64::consts::FRAC_PI_2;
 
 use bevel_math::{Aabb3, Frame3, Interval, Point3, Vector3};
 
+use super::convert::{ConvertedSurface, ParamMap, revolve};
 use super::revolved::{axial_angle, radial, revolved_bounds, revolved_derivatives};
-use super::{Circle3, Domain, FULL_TURN, check_frame, check_point3, check_radius, trig_derivative};
-use crate::{Curvatures, GeomError, SurfaceClosestPoint};
+use super::{
+    Circle3, Domain, FULL_TURN, check_frame, check_point3, check_radius, check_range,
+    trig_derivative,
+};
+use crate::{Curvatures, GeomError, NurbsSurface, SurfaceClosestPoint, circle_arc};
+
+/// How far outside `[-pi / 2, pi / 2]` a latitude range may reach (it is
+/// clamped).
+const LATITUDE_SLACK: f64 = 1e-12;
 
 /// `cos(v)` at or below which a latitude counts as a pole.
 const POLE_TOLERANCE: f64 = 1e-12;
@@ -216,5 +224,63 @@ impl Sphere {
     /// [`GeomError::NonFinite`] for a non-finite range.
     pub fn bounds(&self, u: Interval, v: Interval) -> Result<Aabb3, GeomError> {
         revolved_bounds(&self.frame, u, v, true, |u, v| self.point(u, v))
+    }
+
+    /// The patch over `u x v` as an exact NURBS: the meridian arc at
+    /// longitude `u.min` revolved about the axis with
+    /// [`NurbsSurface::revolution`], on the domain `u x v`. Both
+    /// directions follow the arc map of
+    /// [`analytic::convert`](crate::analytic::convert). A pole in the
+    /// range gives a row of coincident control points.
+    ///
+    /// # Errors
+    ///
+    /// [`GeomError::NonFinite`] for a non-finite range and
+    /// [`GeomError::InvalidArgument`] for one of zero length, a `u` range longer than a full turn, and
+    /// [`GeomError::ParameterOutOfDomain`] for a latitude outside
+    /// `[-pi / 2, pi / 2]` (by more than 1e-12).
+    pub fn to_nurbs_mapped(&self, u: Interval, v: Interval) -> Result<ConvertedSurface, GeomError> {
+        check_range(u)?;
+        check_range(v)?;
+        for t in [v.min, v.max] {
+            if !LATITUDES.contains_with(t, LATITUDE_SLACK) {
+                return Err(GeomError::ParameterOutOfDomain { t });
+            }
+        }
+        let v = Interval::new(v.min.max(LATITUDES.min), v.max.min(LATITUDES.max));
+        let (e, _) = radial(&self.frame, u.min);
+        let meridian = Frame3 {
+            origin: self.frame.origin,
+            x: e,
+            y: self.frame.z,
+            z: e.cross(self.frame.z),
+        };
+        let profile = circle_arc(&meridian, self.radius, v.min, v.max)?;
+        let nurbs = revolve(&self.frame, &profile, u)?;
+        let map_u = ParamMap::arc(nurbs.knots_u());
+        let map_v = ParamMap::arc(nurbs.knots_v());
+        Ok(ConvertedSurface {
+            nurbs,
+            map_u,
+            map_v,
+        })
+    }
+
+    /// [`Self::to_nurbs_mapped`] without the maps.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::to_nurbs_mapped`].
+    pub fn to_nurbs(&self, u: Interval, v: Interval) -> Result<NurbsSurface, GeomError> {
+        self.to_nurbs_mapped(u, v).map(|c| c.nurbs)
+    }
+
+    /// The whole surface as a NURBS: [`Self::to_nurbs`] over `[0, 2 pi] x [-pi / 2, pi / 2]`.
+    ///
+    /// # Errors
+    ///
+    /// None in practice; the signature matches [`Self::to_nurbs`].
+    pub fn to_nurbs_full(&self) -> Result<NurbsSurface, GeomError> {
+        self.to_nurbs(FULL_TURN, LATITUDES)
     }
 }

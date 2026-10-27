@@ -74,6 +74,8 @@
 //! [`SurfaceClosestPoint`]: crate::SurfaceClosestPoint
 //! [`Curvatures`]: crate::Curvatures
 
+pub mod convert;
+
 mod circle;
 mod cone;
 mod cylinder;
@@ -86,6 +88,7 @@ mod torus;
 
 pub use circle::{Circle2, Circle3};
 pub use cone::Cone;
+pub use convert::{ConvertedCurve, ConvertedSurface, ParamMap};
 pub use cylinder::Cylinder;
 pub use ellipse::{Ellipse2, Ellipse3};
 pub use line::{Line2, Line3};

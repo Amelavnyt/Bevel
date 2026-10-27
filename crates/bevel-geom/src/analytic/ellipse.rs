@@ -18,13 +18,15 @@
 //! answer is the end of the minor axis at `t = pi / 2` (both ends are
 //! equally close; for `a = b`, `t = 0`).
 
-use bevel_math::{Aabb2, Aabb3, Frame3, Interval, Point2, Point3, Vector2, Vector3};
+use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Frame3, Interval, Point2, Point3, Vector2, Vector3};
+
+use super::convert::{ConvertedCurve, ParamMap, ellipse_arc_axes_2d};
 
 use super::{
     Domain, FULL_TURN, check_frame, check_point2, check_point3, check_range, closest_on_ellipse,
     derivative_count, sinusoid_extrema, trig_derivative, unit2, wrap_angle,
 };
-use crate::{ClosestPoint, GeomError};
+use crate::{ClosestPoint, GeomError, NurbsCurve, NurbsCurve2, NurbsCurve3, ellipse_arc};
 
 /// An ellipse in the plane with its own axes:
 /// `C(t) = center + a cos(t) x + b sin(t) y` with the major axis `x` and
@@ -167,6 +169,10 @@ impl Ellipse2 {
     fn axes(&self) -> (Point2, Vector2, Vector2) {
         (self.center, self.x, self.y)
     }
+
+    fn nurbs_arc(&self, range: Interval) -> Result<NurbsCurve2, GeomError> {
+        ellipse_arc_axes_2d(self.center, self.x, self.y, self.major, self.minor, range)
+    }
 }
 
 impl Ellipse3 {
@@ -246,11 +252,15 @@ impl Ellipse3 {
     fn axes(&self) -> (Point3, Vector3, Vector3) {
         (self.frame.origin, self.frame.x, self.frame.y)
     }
+
+    fn nurbs_arc(&self, range: Interval) -> Result<NurbsCurve3, GeomError> {
+        ellipse_arc(&self.frame, self.major, self.minor, range.min, range.max)
+    }
 }
 
 /// Generates the parts shared by [`Ellipse2`] and [`Ellipse3`].
 macro_rules! ellipse_common {
-    ($ellipse:ident, $point:ty, $vector:ty, $aabb:ty, $dims:expr) => {
+    ($ellipse:ident, $point:ty, $vector:ty, $aabb:ty, $h:ty, $dims:expr) => {
         impl $ellipse {
             /// The major radius `a`, along the `x` axis.
             pub fn major_radius(&self) -> f64 {
@@ -327,6 +337,43 @@ macro_rules! ellipse_common {
                 -t
             }
 
+            /// The exact rational quadratic arc over `range` (see
+            /// [`analytic::convert`](crate::analytic::convert) for its
+            /// segments and parameter map), on the domain `range`.
+            ///
+            /// # Errors
+            ///
+            /// [`GeomError::NonFinite`] for a non-finite range and
+            /// [`GeomError::InvalidArgument`] unless its length is in
+            /// `(0, 2 pi]`.
+            pub fn to_nurbs_mapped(
+                &self,
+                range: Interval,
+            ) -> Result<ConvertedCurve<$h>, GeomError> {
+                let nurbs = self.nurbs_arc(range)?;
+                let map = ParamMap::arc(nurbs.knots());
+                Ok(ConvertedCurve { nurbs, map })
+            }
+
+            /// [`Self::to_nurbs_mapped`] without the map.
+            ///
+            /// # Errors
+            ///
+            /// As [`Self::to_nurbs_mapped`].
+            pub fn to_nurbs(&self, range: Interval) -> Result<NurbsCurve<$h>, GeomError> {
+                self.nurbs_arc(range)
+            }
+
+            /// The whole curve as a NURBS: [`Self::to_nurbs`] over
+            /// `[0, 2 pi]`.
+            ///
+            /// # Errors
+            ///
+            /// None in practice; the signature matches [`Self::to_nurbs`].
+            pub fn to_nurbs_full(&self) -> Result<NurbsCurve<$h>, GeomError> {
+                self.nurbs_arc(FULL_TURN)
+            }
+
             /// The eccentric angle of the point closest to the point with
             /// coordinates `(lx, ly)` along the axes.
             fn local_closest(&self, lx: f64, ly: f64) -> f64 {
@@ -337,8 +384,8 @@ macro_rules! ellipse_common {
     };
 }
 
-ellipse_common!(Ellipse2, Point2, Vector2, Aabb2, 2);
-ellipse_common!(Ellipse3, Point3, Vector3, Aabb3, 3);
+ellipse_common!(Ellipse2, Point2, Vector2, Aabb2, DVec3, 2);
+ellipse_common!(Ellipse3, Point3, Vector3, Aabb3, DVec4, 3);
 
 #[cfg(test)]
 mod tests {

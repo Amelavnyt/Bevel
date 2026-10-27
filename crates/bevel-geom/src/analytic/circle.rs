@@ -14,13 +14,15 @@
 //! 2D), where every point of the circle is equally close, is the one at
 //! `t = 0`.
 
-use bevel_math::{Aabb2, Aabb3, Frame3, Interval, Point2, Point3, Vector2, Vector3};
+use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Frame3, Interval, Point2, Point3, Vector2, Vector3};
+
+use super::convert::{ConvertedCurve, ParamMap, ellipse_arc_axes_2d};
 
 use super::{
     Domain, FULL_TURN, check_frame, check_point2, check_point3, check_radius, check_range,
     derivative_count, sinusoid_extrema, trig_derivative, unit2, unit3, wrap_angle,
 };
-use crate::{ClosestPoint, GeomError};
+use crate::{ClosestPoint, GeomError, NurbsCurve, NurbsCurve2, NurbsCurve3, circle_arc};
 
 /// A circle in the plane with its own axes: `C(t) = center + radius
 /// (cos(t) x + sin(t) y)` with `y = perp(x)` (counter-clockwise) or
@@ -148,6 +150,10 @@ impl Circle2 {
     fn axes(&self) -> (Point2, Vector2, Vector2) {
         (self.center, self.x, self.y)
     }
+
+    fn nurbs_arc(&self, range: Interval) -> Result<NurbsCurve2, GeomError> {
+        ellipse_arc_axes_2d(self.center, self.x, self.y, self.radius, self.radius, range)
+    }
 }
 
 impl Circle3 {
@@ -244,11 +250,15 @@ impl Circle3 {
     fn axes(&self) -> (Point3, Vector3, Vector3) {
         (self.frame.origin, self.frame.x, self.frame.y)
     }
+
+    fn nurbs_arc(&self, range: Interval) -> Result<NurbsCurve3, GeomError> {
+        circle_arc(&self.frame, self.radius, range.min, range.max)
+    }
 }
 
 /// Generates the parts shared by [`Circle2`] and [`Circle3`].
 macro_rules! circle_common {
-    ($circle:ident, $point:ty, $vector:ty, $aabb:ty, $dims:expr) => {
+    ($circle:ident, $point:ty, $vector:ty, $aabb:ty, $h:ty, $dims:expr) => {
         impl $circle {
             /// The point at angle `t`.
             pub fn point(&self, t: f64) -> $point {
@@ -305,12 +315,49 @@ macro_rules! circle_common {
             pub fn reversed_parameter(&self, t: f64) -> f64 {
                 -t
             }
+
+            /// The exact rational quadratic arc over `range` (see
+            /// [`analytic::convert`](crate::analytic::convert) for its
+            /// segments and parameter map), on the domain `range`.
+            ///
+            /// # Errors
+            ///
+            /// [`GeomError::NonFinite`] for a non-finite range and
+            /// [`GeomError::InvalidArgument`] unless its length is in
+            /// `(0, 2 pi]`.
+            pub fn to_nurbs_mapped(
+                &self,
+                range: Interval,
+            ) -> Result<ConvertedCurve<$h>, GeomError> {
+                let nurbs = self.nurbs_arc(range)?;
+                let map = ParamMap::arc(nurbs.knots());
+                Ok(ConvertedCurve { nurbs, map })
+            }
+
+            /// [`Self::to_nurbs_mapped`] without the map.
+            ///
+            /// # Errors
+            ///
+            /// As [`Self::to_nurbs_mapped`].
+            pub fn to_nurbs(&self, range: Interval) -> Result<NurbsCurve<$h>, GeomError> {
+                self.nurbs_arc(range)
+            }
+
+            /// The whole curve as a NURBS: [`Self::to_nurbs`] over
+            /// `[0, 2 pi]`.
+            ///
+            /// # Errors
+            ///
+            /// None in practice; the signature matches [`Self::to_nurbs`].
+            pub fn to_nurbs_full(&self) -> Result<NurbsCurve<$h>, GeomError> {
+                self.nurbs_arc(FULL_TURN)
+            }
         }
     };
 }
 
-circle_common!(Circle2, Point2, Vector2, Aabb2, 2);
-circle_common!(Circle3, Point3, Vector3, Aabb3, 3);
+circle_common!(Circle2, Point2, Vector2, Aabb2, DVec3, 2);
+circle_common!(Circle3, Point3, Vector3, Aabb3, DVec4, 3);
 
 #[cfg(test)]
 mod tests {
