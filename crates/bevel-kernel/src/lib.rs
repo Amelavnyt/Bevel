@@ -42,10 +42,16 @@
 //!   watertight; faces are triangulated in `(u, v)` by a constrained
 //!   Delaunay triangulation refined adaptively, with exact surface points
 //!   and normals.
+//! - [`mass`]: [`mass_properties`] gives a solid's volume, area, centroid
+//!   and inertia tensor at unit density, with principal moments and axes,
+//!   by the divergence theorem and Gauss quadrature of the exact surface
+//!   integrands over each face's triangulated `(u, v)` domain (curved
+//!   trims included).
 //!
 //! Next: extrude, revolve and booleans.
 
 pub mod builder;
+pub mod mass;
 pub mod naming;
 pub mod primitives;
 pub mod tessellate;
@@ -59,6 +65,7 @@ mod tests;
 
 pub use builder::BodyBuilder;
 pub use error::KernelError;
+pub use mass::{MassProperties, mass_properties};
 pub use naming::{
     EntityKind, History, HistoryEntry, OpContext, OpOutput, OpTag, Role, Source, TopoName,
 };

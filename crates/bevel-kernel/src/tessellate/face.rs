@@ -93,7 +93,6 @@ type Cdt = ConstrainedDelaunayTriangulation<spade::Point2<f64>, (), (), FaceStat
 /// edge parameter `t0` to `t1` (in travel order), between the polygon
 /// vertices `a` and `b`.
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // read by the mass properties
 pub(crate) struct Segment {
     /// The coedge whose pcurve the segment follows.
     pub coedge: CoedgeKey,
