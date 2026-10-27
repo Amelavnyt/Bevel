@@ -83,6 +83,8 @@ Helices and offset curves/surfaces, which are not exactly NURBS and are approxim
 
 ## Phase 7: Inspect
 
+- [ ] CPU ray cast against a bounding volume hierarchy, for exact hit points and snapping (moved from Phase 2)
+- [ ] Silhouette edges of curved faces (moved from Phase 2)
 - [ ] Measure
 - [ ] Section view
 - [ ] Mass-properties panel

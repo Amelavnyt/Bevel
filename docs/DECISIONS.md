@@ -30,6 +30,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the design these decisions produce.
 | 0014 | Exceptions to the dependency rules for the application shell | Accepted |
 | 0015 | One design workspace with an SVG icon set | Accepted |
 | 0016 | NURBS stored in homogeneous coordinates, one implementation for 2D and 3D | Accepted |
+| 0017 | Picking through an id buffer read back asynchronously | Accepted |
 
 ## ADR-0001: 100% Rust, no C/C++ in the build
 
@@ -198,3 +199,13 @@ Status: Accepted (2026-10-26)
 **Decision.** Control points are stored in homogeneous form (`DVec3` for 2D, `DVec4` for 3D). A `Homogeneous` trait in `bevel-geom` provides the few operations the algorithms need (weight, weighted part, projection, dot product), and `NurbsCurve<H: Homogeneous>` implements every algorithm once, with `NurbsCurve2` and `NurbsCurve3` as aliases. Weights must be finite and positive, which keeps every curve inside the convex hull of its control points. Algorithms cite their NURBS Book numbers.
 
 **Consequences.** Representation-changing operations work directly on the stored data with no conversions, and 2D and 3D cannot drift apart. Accessors project control points when callers want Cartesian coordinates. Negative or zero weights are rejected rather than supported; that excludes some exotic representations that a CAD kernel does not need.
+
+## ADR-0017: Picking through an id buffer read back asynchronously
+
+Status: Accepted (2026-10-27)
+
+**Context.** Hovering and clicking must identify the face or edge under the cursor every frame, for meshes of any size, on desktop GPUs and on WebGL2/WebGPU in the browser. A CPU ray cast needs an acceleration structure over the tessellation and still has to decide which thin edge the user meant; reading the GPU back synchronously stalls the frame and is not possible on the web.
+
+**Decision.** The renderer draws face and edge ids into an `R32Uint` target in an extra pass (edges widened so they are easy to hit), copies the single pixel under the cursor into a mappable buffer, and maps it asynchronously. The result arrives a frame or two later through `poll_pick()`; the extra pass runs only while a pick is pending, and only one readback is in flight. Ids are opaque `u32`s chosen by the application (0 means not pickable).
+
+**Consequences.** Picking costs one extra pass per request and has a latency of one or two frames, which is invisible for hover and selection. It picks exactly what is drawn, including edges, with no CPU-side structures. Exact hit points on surfaces and snapping need a CPU ray cast against a bounding volume hierarchy; that arrives with measurement in Phase 7.

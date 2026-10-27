@@ -111,18 +111,21 @@ pub enum Surface { Plane(Plane), Cylinder(Cylinder), Cone(Cone), Sphere(Sphere),
 
 ### bevel-kernel: topology
 
-Planned design:
+As implemented (field names abbreviated; see `bevel-kernel/src/topology.rs`):
 
 ```rust
 // Arena-based B-rep (slotmap). Bodies are immutable values shared via Arc; ops return new bodies.
 pub struct Vertex { point: Point3, tol: f64, name: TopoName }
-pub struct Edge   { curve: Curve3, range: Interval, verts: [VertexKey; 2], tol: f64, name: TopoName }
-pub struct Coedge { edge: EdgeKey, reversed: bool, pcurve: Curve2, loop_: LoopKey }   // half-edge / fin
-pub struct Loop   { coedges: Vec<CoedgeKey> }              // a face's first loop is its outer loop
-pub struct Face   { surface: Surface, reversed: bool, loops: Vec<LoopKey>, name: TopoName }
+pub struct Edge   { curve: Curve3, range: Interval, start: VertexKey, end: VertexKey,
+                    degenerate: bool, tol: f64, name: TopoName }       // runs range.min -> range.max
+pub struct Coedge { edge: EdgeKey, reversed: bool, pcurve: Curve2, loop_: LoopKey } // pcurve shares the edge parameter
+pub struct Loop   { coedges: Vec<CoedgeKey>, face: FaceKey }   // a face's first loop is its outer loop
+pub struct Face   { surface: Surface, reversed: bool, loops: Vec<LoopKey>, shell: ShellKey, name: TopoName }
 pub struct Shell  { faces: Vec<FaceKey>, closed: bool }
-pub struct Solid  { shells: Vec<ShellKey> }                // shells[0] is outer, the rest are voids
+pub struct Body   { /* arenas */ shells: Vec<ShellKey>, kind: BodyKind } // Solid: shells[0] outer, others voids; or Sheet
 ```
+
+Orientation, seams, degenerate edges (poles, apexes) and Euler–Poincaré counting are specified in [KERNEL.md](KERNEL.md) ("Topology conventions"). Bodies serialize in a flat, index-based form and are rebuilt and re-validated on load.
 
 - Euler-operator-style builders and healing utilities (merge vertices within tolerance, fix orientation, compute missing pcurves).
 - `validate(&Body) -> Vec<Issue>` checks closed 2-manifold shells, consistent orientation, loop closure, pcurve and 3D curve agreement, vertices on their edges, Euler-Poincare and, in debug and tests only, absence of self-intersections.
@@ -341,6 +344,7 @@ This describes what the code does today.
 - **Hand-off to egui.** `bevel-app` (`viewport.rs`) calls the renderer each frame with the viewport size in pixels and the camera, then registers the resolved texture with egui's wgpu renderer (`register_native_texture`). When the targets are recreated, for example after a resize, the existing egui texture id is updated in place (`update_egui_texture_from_wgpu_texture`). The renderer clamps target edges to 8192 px.
 - **World space.** Z-up, right-handed, in millimetres, with the ground grid in the XY plane. CPU-side camera math is `f64`; values are converted to `f32` only when written to GPU buffers.
 - **Depth.** Reverse-Z (1 at the near plane, 0 at infinity) with an infinite far plane for perspective projection; see [ADR-0013](DECISIONS.md#adr-0013-z-up-world-and-reverse-z-depth).
+- **Ids, edges and picking.** Meshes carry a face id per vertex and line sets an edge id per segment (0 = not pickable). B-rep edges are drawn as screen-space thick lines: one instance per segment, expanded in the vertex shader to a quad of the given pixel width with half-width end caps, pulled slightly towards the camera so edges win against their faces. `set_highlight(hovered, selected)` tints hovered and selected ids in the shaders (up to 64 selected ids, in a uniform array that also works on WebGL2). `request_pick(pixel)` renders an id pass into an `R32Uint` target (edges drawn 6 px wider so they are easy to hit) only when a pick is pending, copies the one pixel into a mappable buffer and reads it back asynchronously; `poll_pick()` returns the result a frame or two later without ever blocking. See [ADR-0017](DECISIONS.md#adr-0017-picking-through-an-id-buffer-read-back-asynchronously).
 - **Camera.** A turntable camera orbiting a target point: the eye sits at `target + distance * dir(yaw, pitch)`, with pitch clamped just short of the poles. Orbit is right-drag or Shift+middle-drag; pan is middle-drag or Shift+right-drag; zoom is toward the cursor with the wheel or a pinch. Home is Fit All. The View menu toggles between perspective and orthographic projection; the orthographic view height matches what the perspective view shows at the target distance, so switching keeps the framing.
 
 ## App and UI (bevel-app, bevel-ui)
