@@ -66,6 +66,10 @@
 //!   implemented by every analytic type, by the NURBS types (delegating to
 //!   their own methods) and by the enums [`Curve2`], [`Curve3`] and
 //!   [`Surface`] (dispatching to the variant).
+//! - [`analytic::transform`]: affine transforms of the analytic types,
+//!   which keep their kind under conformal maps (rigid motions keep every
+//!   parameter); non-uniform maps turn circles into ellipses and spheres
+//!   and tori into NURBS, and singular matrices are rejected.
 //!
 //! The curve arc length still uses a local copy of the Gauss-Legendre
 //! rules; the closest-point iterations keep their own Newton loops, since

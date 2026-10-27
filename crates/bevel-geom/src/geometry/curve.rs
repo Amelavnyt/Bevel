@@ -2,9 +2,10 @@
 
 //! [`CurveGeom`] and the curve enums [`Curve2`] and [`Curve3`].
 
-use bevel_math::{Aabb2, Aabb3, DVec3, DVec4, Interval, Point2, Point3};
+use bevel_math::{Aabb2, Aabb3, DMat3, DMat4, DVec3, DVec4, Interval, Point2, Point3};
 
 use super::restriction;
+use crate::analytic::transform::{check_invertible3, check_invertible4};
 use crate::analytic::{ConvertedCurve, Domain, ParamMap};
 use crate::{
     Circle2, Circle3, ClosestPoint, Ellipse2, Ellipse3, GeomError, Homogeneous, Line2, Line3,
@@ -24,6 +25,13 @@ pub trait CurveGeom {
 
     /// The bounding box type, [`Aabb2`] or [`Aabb3`].
     type Bounds;
+
+    /// The transform matrix type: [`DMat3`] acting on `(x, y, 1)` in the
+    /// plane, [`DMat4`] acting on `(x, y, z, 1)` in space.
+    type Transform;
+
+    /// The curve enum a transform returns, [`Curve2`] or [`Curve3`].
+    type Curve;
 
     /// The point at parameter `t`.
     fn point(&self, t: f64) -> Self::Point;
@@ -61,6 +69,21 @@ pub trait CurveGeom {
     /// [`GeomError::NonFinite`] for a non-finite range and, for NURBS,
     /// [`GeomError::ParameterOutOfDomain`] for one outside the domain.
     fn bounds(&self, range: Interval) -> Result<Self::Bounds, GeomError>;
+
+    /// The curve under the transform `m`, which must be invertible. The
+    /// analytic types need an affine `m` and keep their kind where the map
+    /// allows (a circle may become an ellipse; see
+    /// [`analytic::transform`](crate::analytic::transform) for the
+    /// parameters); NURBS curves follow any invertible `m`, projective
+    /// ones included.
+    ///
+    /// # Errors
+    ///
+    /// [`GeomError::NonFinite`] for a non-finite matrix,
+    /// [`GeomError::InvalidArgument`] for a singular one (or a projective
+    /// one for analytic curves) and, for NURBS,
+    /// [`GeomError::InvalidWeight`] if a weight stops being positive.
+    fn transformed(&self, m: &Self::Transform) -> Result<Self::Curve, GeomError>;
 
     /// The same curve traversed backwards; [`CurveGeom::reversed_parameter`]
     /// maps the parameters.
@@ -142,11 +165,17 @@ pub enum Curve3 {
 /// Implements [`CurveGeom`] for an analytic type by delegating to its own
 /// methods of the same names.
 macro_rules! analytic_curve {
-    ($ty:ty, $point:ty, $h:ty, $aabb:ty) => {
+    ($ty:ty, $point:ty, $h:ty, $aabb:ty, $m:ty, $enum:ty) => {
         impl CurveGeom for $ty {
             type Point = $point;
             type Homogeneous = $h;
             type Bounds = $aabb;
+            type Transform = $m;
+            type Curve = $enum;
+
+            fn transformed(&self, m: &$m) -> Result<$enum, GeomError> {
+                <$ty>::transformed(self, m)
+            }
 
             fn point(&self, t: f64) -> $point {
                 <$ty>::point(self, t)
@@ -191,12 +220,12 @@ macro_rules! analytic_curve {
     };
 }
 
-analytic_curve!(Line2, Point2, DVec3, Aabb2);
-analytic_curve!(Line3, Point3, DVec4, Aabb3);
-analytic_curve!(Circle2, Point2, DVec3, Aabb2);
-analytic_curve!(Circle3, Point3, DVec4, Aabb3);
-analytic_curve!(Ellipse2, Point2, DVec3, Aabb2);
-analytic_curve!(Ellipse3, Point3, DVec4, Aabb3);
+analytic_curve!(Line2, Point2, DVec3, Aabb2, DMat3, Curve2);
+analytic_curve!(Line3, Point3, DVec4, Aabb3, DMat4, Curve3);
+analytic_curve!(Circle2, Point2, DVec3, Aabb2, DMat3, Curve2);
+analytic_curve!(Circle3, Point3, DVec4, Aabb3, DMat4, Curve3);
+analytic_curve!(Ellipse2, Point2, DVec3, Aabb2, DMat3, Curve2);
+analytic_curve!(Ellipse3, Point3, DVec4, Aabb3, DMat4, Curve3);
 
 /// The piece of `c` over `range` (the curve itself when `range` covers the
 /// domain).
@@ -227,11 +256,20 @@ fn restricted<H: Homogeneous>(
 /// Implements [`CurveGeom`] for a NURBS curve type by delegating to its own
 /// methods.
 macro_rules! nurbs_curve {
-    ($ty:ty, $point:ty, $h:ty, $aabb:ty) => {
+    ($ty:ty, $point:ty, $h:ty, $aabb:ty, $m:ty, $enum:ident, $check:ident) => {
         impl CurveGeom for $ty {
             type Point = $point;
             type Homogeneous = $h;
             type Bounds = $aabb;
+            type Transform = $m;
+            type Curve = $enum;
+
+            /// The transformed control points (exact), after checking that
+            /// `m` is invertible.
+            fn transformed(&self, m: &$m) -> Result<$enum, GeomError> {
+                $check(m)?;
+                <$ty>::transformed(self, m).map($enum::Nurbs)
+            }
 
             fn point(&self, t: f64) -> $point {
                 <$ty>::point(self, t)
@@ -291,13 +329,29 @@ macro_rules! nurbs_curve {
     };
 }
 
-nurbs_curve!(NurbsCurve2, Point2, DVec3, Aabb2);
-nurbs_curve!(NurbsCurve3, Point3, DVec4, Aabb3);
+nurbs_curve!(
+    NurbsCurve2,
+    Point2,
+    DVec3,
+    Aabb2,
+    DMat3,
+    Curve2,
+    check_invertible3
+);
+nurbs_curve!(
+    NurbsCurve3,
+    Point3,
+    DVec4,
+    Aabb3,
+    DMat4,
+    Curve3,
+    check_invertible4
+);
 
 /// Implements [`CurveGeom`] and the `From` conversions for a curve enum by
 /// dispatching to the variant.
 macro_rules! curve_enum {
-    ($enum:ident, $point:ty, $h:ty, $aabb:ty, $line:ty, $circle:ty, $ellipse:ty, $nurbs:ty) => {
+    ($enum:ident, $point:ty, $h:ty, $aabb:ty, $m:ty, $line:ty, $circle:ty, $ellipse:ty, $nurbs:ty) => {
         impl From<$line> for $enum {
             fn from(c: $line) -> Self {
                 Self::Line(c)
@@ -333,6 +387,12 @@ macro_rules! curve_enum {
             type Point = $point;
             type Homogeneous = $h;
             type Bounds = $aabb;
+            type Transform = $m;
+            type Curve = $enum;
+
+            fn transformed(&self, m: &$m) -> Result<$enum, GeomError> {
+                dispatch!($enum, self, c => CurveGeom::transformed(c, m))
+            }
 
             fn point(&self, t: f64) -> $point {
                 dispatch!($enum, self, c => CurveGeom::point(c, t))
@@ -399,6 +459,7 @@ curve_enum!(
     Point2,
     DVec3,
     Aabb2,
+    DMat3,
     Line2,
     Circle2,
     Ellipse2,
@@ -409,6 +470,7 @@ curve_enum!(
     Point3,
     DVec4,
     Aabb3,
+    DMat4,
     Line3,
     Circle3,
     Ellipse3,

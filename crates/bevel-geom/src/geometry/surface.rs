@@ -2,9 +2,10 @@
 
 //! [`SurfaceGeom`] and the surface enum [`Surface`].
 
-use bevel_math::{Aabb3, Interval, Point3, Vector3};
+use bevel_math::{Aabb3, DMat4, Interval, Point3, Vector3};
 
 use super::{Curve3, CurveGeom, restriction};
+use crate::analytic::transform::check_invertible4;
 use crate::analytic::{ConvertedSurface, Domain, ParamMap};
 use crate::{
     Cone, Curvatures, Cylinder, GeomError, NurbsSurface, Plane, Sphere, SurfaceClosestPoint, Torus,
@@ -84,6 +85,24 @@ pub trait SurfaceGeom {
     /// [`GeomError::InvalidArgument`] where it is a single point (a pole of
     /// a sphere, the apex of a cone).
     fn isocurve_v(&self, v: f64) -> Result<Curve3, GeomError>;
+
+    /// The surface under the transform `m`, which must be invertible. The
+    /// analytic types need an affine `m` and keep their kind where the map
+    /// allows; a sphere or torus under a non-conformal map becomes the
+    /// NURBS form of its whole domain, and a cylinder or cone that would
+    /// become elliptic is rejected (see
+    /// [`analytic::transform`](crate::analytic::transform), which also
+    /// gives the parameters). NURBS surfaces follow any invertible `m`,
+    /// projective ones included.
+    ///
+    /// # Errors
+    ///
+    /// [`GeomError::NonFinite`] for a non-finite matrix,
+    /// [`GeomError::InvalidArgument`] for a singular one, a projective one
+    /// for analytic surfaces, or one that makes a cylinder or cone
+    /// elliptic, and, for NURBS, [`GeomError::InvalidWeight`] if a weight
+    /// stops being positive.
+    fn transformed(&self, m: &DMat4) -> Result<Surface, GeomError>;
 
     /// A box containing the patch over `u x v`: exact for the analytic
     /// types, the box of the control points of that patch for NURBS.
@@ -197,6 +216,10 @@ macro_rules! analytic_surface {
 
             fn bounds(&self, u: Interval, v: Interval) -> Result<Aabb3, GeomError> {
                 $ty::bounds(self, u, v)
+            }
+
+            fn transformed(&self, m: &DMat4) -> Result<Surface, GeomError> {
+                $ty::transformed(self, m)
             }
 
             fn to_nurbs_mapped(
@@ -316,6 +339,13 @@ impl SurfaceGeom for NurbsSurface {
         }
     }
 
+    /// The transformed control points (exact), after checking that `m` is
+    /// invertible.
+    fn transformed(&self, m: &DMat4) -> Result<Surface, GeomError> {
+        check_invertible4(m)?;
+        NurbsSurface::transformed(self, m).map(Surface::Nurbs)
+    }
+
     fn to_nurbs_mapped(&self, u: Interval, v: Interval) -> Result<ConvertedSurface, GeomError> {
         Ok(ConvertedSurface {
             nurbs: restricted(self, u, v)?,
@@ -395,6 +425,10 @@ impl SurfaceGeom for Surface {
 
     fn bounds(&self, u: Interval, v: Interval) -> Result<Aabb3, GeomError> {
         dispatch!(self, s => SurfaceGeom::bounds(s, u, v))
+    }
+
+    fn transformed(&self, m: &DMat4) -> Result<Surface, GeomError> {
+        dispatch!(self, s => SurfaceGeom::transformed(s, m))
     }
 
     fn to_nurbs_mapped(&self, u: Interval, v: Interval) -> Result<ConvertedSurface, GeomError> {

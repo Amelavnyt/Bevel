@@ -85,6 +85,7 @@ mod plane;
 mod revolved;
 mod sphere;
 mod torus;
+pub mod transform;
 
 pub use circle::{Circle2, Circle3};
 pub use cone::Cone;
