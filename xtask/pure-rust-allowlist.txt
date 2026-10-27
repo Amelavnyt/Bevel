@@ -18,3 +18,10 @@ wayland-sys pkg-config
 # as string constants for run-time loading. It compiles no C and links
 # nothing but libdl.
 x11-dl pkg-config
+
+# All platforms (content hashing in the timeline and the object store).
+# With the `pure` feature the hash is built from Rust only: no C or
+# assembly is compiled or linked. On x86 the build script still asks a C
+# compiler, if one is installed, whether it supports AVX-512 flags; the
+# answer is ignored under `pure`, and the build succeeds without one.
+blake3 cc

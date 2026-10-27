@@ -180,6 +180,8 @@ Two dependencies outside the starting set are accepted: `tracing-subscriber`, th
 
 **Consequences.** The guard and cargo-deny stay strict for everything else. Each exception is reviewed when the dependency that brings it in is upgraded: the advisory ignores go once accesskit moves to zbus 6, and the guard warns when an allow-list entry is no longer needed. Content hashing for the object store will need the same review: `blake3` keeps `cc` as a build dependency even with its `pure` feature, which disables the C and assembly code.
 
+*Amended 2026-10-27:* `blake3 cc` joins the allow-list for content hashing in the timeline and the object store. With the `pure` feature nothing but Rust is compiled or linked. On x86 the build script still asks an installed C compiler, if any, whether it supports AVX-512 flags; under `pure` the answer is ignored, and the build succeeds on machines without a C compiler. A pure-Rust SHA-256 would avoid the entry, but BLAKE3 is the hash the object-store design (ADR-0007) names, and it is several times faster for large body blobs.
+
 ## ADR-0015: One design workspace with an SVG icon set
 
 Status: Accepted (2026-10-26)
