@@ -71,6 +71,7 @@ use crate::knots::check_degree;
 use crate::{GeomError, Homogeneous, KnotVector};
 
 pub use approximate::{approximate, approximate_to_tolerance};
+pub(crate) use interpolate::interpolate_at;
 pub use interpolate::{interpolate, interpolate_with_tangents};
 pub use surface::{
     approximate_surface, interpolate_surface, loft, loft_parameters, surface_parameters,
