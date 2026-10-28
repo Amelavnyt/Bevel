@@ -150,6 +150,23 @@ with `c` the centre of the bounding box for `V` and `M`, the centroid `g = c + M
 
 Each face's trimmed `(u, v)` domain is triangulated as for tessellation (angular 0.3 rad, no chordal or length limit) and each triangle integrated with an 8 x 8 Gauss-Legendre product rule on the collapsed square `a + s (b - a) + (1 - s) t (c - a)`, of the exact integrands. Triangles that collapse at a pole are kept here, since their `(u, v)` area carries real surface. Where a pcurve is not a line (the circle around a planar cap), the sliver between each chord and its arc, `Q(tau, sigma) = L(tau) + sigma (C(t(tau)) - L(tau))`, is added with the same rule and the sign of the loop's orientation, so curved trims are exact too. Principal axes come from cyclic Jacobi rotations on the symmetric tensor. The property tests (`tests/mass_props.rs`) match the closed-form volume, area, centroid, tensor and principal moments of all five primitives (frustum and apex cone included) under random frames to 1e-9; the closed forms are derived in `tests/common/mod.rs`.
 
+## Intersections
+
+`bevel_geom::intersect` intersects bounded pieces: a curve over a parameter range, a surface over a parameter rectangle (`Rect`), as edges and faces use them.
+
+- **Curve–curve and curve–surface** return points (with parameters on both) and overlaps (stretches where the pieces coincide), sorted and deduplicated within the tolerance.
+- **Surface–surface** (`surface_surface`) returns curves, each with a pcurve on both surfaces that shares the curve's parameter, plus isolated touching points, or reports that the surfaces coincide. Every curve records its `tolerance` (zero for exact results) and its `contact`: transversal, or tangent along the curve.
+
+**Exact fast paths** handle plane–plane; every pair of coaxial surfaces of revolution (spheres, cylinders, cones, tori and planes perpendicular to the axis; a sphere shares every axis through its centre, so plane–sphere and sphere–sphere belong here), by intersecting their profiles in the half-plane through the axis, where each meeting point sweeps a circle; plane–cylinder (rulings or an ellipse); and parallel cylinders (rulings). Tangent contacts there are exact: a plane touching a sphere is a point, a cylinder lying on a plane a tangent ruling, a sphere inscribed in a cylinder a tangent circle. The curves are clipped to both rectangles by following the surface parameters along them, splitting at periodic seams and poles. Pcurves are exact where the parameters change linearly (lines and conics on planes, rulings and coaxial circles on cylinders and cones, latitudes on spheres) and otherwise cubics through inverted samples, refined adaptively until they map within half the tolerance.
+
+**The general method** works for any pair and is what the fast paths are tested against:
+
+1. Seeds: both rectangles are subdivided together, dropping pairs whose boxes (from `SurfaceGeom::bounds`, exact for analytic types and control-point hulls of sub-patches for NURBS) do not overlap, down to a sixty-fourth of the patches' size; Newton's method (minimum-norm steps on the four parameters) from each remaining pair finds a point on both surfaces.
+2. Marching: each branch is followed both ways by a step along the cross product of the normals, then Newton back onto both surfaces in the plane through the predicted point normal to the tangent. The step keeps a cubic through the samples within tolerance (about `(384 tol / k^3)^(1/4)` for curvature `k`) and turns at most 0.15 rad. Parameters stay continuous across steps. A branch ends where it leaves a rectangle (found by bisecting the step) or closes on its own sheet of parameters.
+3. Fitting: the branch becomes a cubic through its samples and each pcurve a cubic through their parameters at the same chord-length parameters. Every span's midpoint is checked against the promise of the result (the curve lies on both surfaces, the pcurves map onto it), and failing spans get refined samples until all pass.
+
+Where the normals are nearly parallel (sine below 1e-3) seeds are not marched from: a small cluster is an isolated touching point; a long one, or a branch that runs into near-tangency, is refused with `GeomError::TangentContact`. Exact fast paths cover the tangent cases booleans meet with analytic surfaces; general tangential NURBS contact waits for Phase 8.
+
 ## Operations
 
 Kernel operations share one signature shape:
@@ -200,6 +217,11 @@ Add a row for each kernel bug, newest last. The regression test column names the
 | 2026-10-27 | Principal curvatures off by 5e-9 on a sphere of radius 2 | Solving k² − 2Hk + K loses half the digits near umbilic points | Closed-form eigen-decomposition of the second fundamental form in an orthonormal tangent basis | `curvatures_stay_accurate_near_an_umbilic_point` |
 | 2026-10-27 | A NaN range end gave a valid-looking zero-length interval | `f64::min`/`max` ignore NaN in `Interval::new` | Propagate NaN to both ends | `nan_end_is_not_swallowed` |
 | 2026-10-27 | A very flat cone primitive (radius 7649 mm, height 0.0018 mm) failed pcurve agreement by 1.5e-6 mm | `Cone` stores its half-angle; `tan` near 90 degrees loses digits, so the radius is off by about `eps dr^2 / h` | The cone primitive refuses cones whose representation error would exceed a tenth of the tolerance | `too_flat_cones_are_refused` |
+| 2026-10-28 | SSI marching treated a seam crossing as a closed loop (cone and sphere sharing a seam) | Loop closure tested only the distance to the seed, which is small across a periodic seam | Close a loop only when the parameters are back on the seed's sheet (no whole-period shift) | `parallel_and_coaxial_pairs` |
+| 2026-10-28 | SSI ended a branch halfway round a circle | A step that failed because it was too long was taken for a step out of the rectangle | Conclude a boundary exit only once the step has shrunk and still crosses it | `plane_sphere_fast_path_matches_general` |
+| 2026-10-28 | SSI traced a circle twice near a sphere's pole | Newton landed a whole period away, so the seam crossing went unseen, and loop closure then missed the seed | Keep marched parameters continuous with the previous point; close loops on the sheet test and on seeds passed within the last step | `plane_sphere_fast_path_matches_general` |
+| 2026-10-28 | SSI fitting piled samples onto a pole and failed | The midpoint check refined through the singular point; the branch end at the pole carried an arbitrary longitude | Check fits against what the result promises (curve on both surfaces, pcurves onto the curve); skip spans shorter than 10 tol; take a pole end's degenerate parameter from its neighbour | `plane_sphere_and_sphere_sphere_are_circles` |
+| 2026-10-28 | Open: the general SSI cannot fit a curve that passes exactly through a pole of a parametrization | Near the pole the samples' longitudes are unreliable | Analytic surfaces take exact fast paths, so only NURBS surfaces with poles are affected; to be handled with singular points in Phase 8 | (none yet) |
 
 ## Algorithm notes
 

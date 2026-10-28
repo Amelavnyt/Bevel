@@ -75,7 +75,7 @@ pub fn interpolate<P: FitPoint>(
 /// Interpolation at given parameters, with averaged knots (A9.1).
 ///
 /// `params` must be valid for `points` (one per point, strictly increasing).
-pub(super) fn interpolate_at<P: FitPoint>(
+pub(crate) fn interpolate_at<P: FitPoint>(
     points: &[P],
     params: &[f64],
     degree: usize,

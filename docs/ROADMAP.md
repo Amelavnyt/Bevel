@@ -54,8 +54,8 @@ The CPU ray cast for exact hit points and silhouette edges of curved faces moved
 
 ## Phase 4: Booleans
 
-- [ ] Curve-curve and curve-surface intersection
-- [ ] Surface-surface intersection (general NURBS path and analytic fast paths)
+- [x] Curve-curve and curve-surface intersection
+- [x] Surface-surface intersection (general NURBS path and analytic fast paths)
 - [ ] Boolean pipeline with the edge-case suite and property tests
 - [ ] Kernel debug dumps and `kernel-repro`
 - [ ] Body modes on primitives

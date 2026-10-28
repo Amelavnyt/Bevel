@@ -67,6 +67,11 @@ pub enum GeomError {
     #[error("input is not finite")]
     NonFinite,
 
+    /// Two surfaces touch tangentially along a curve, a case the general
+    /// intersection method does not handle yet.
+    #[error("the surfaces touch tangentially along a curve, which is not supported yet")]
+    TangentContact,
+
     /// An argument other than those covered above is invalid; the message
     /// says which one and why.
     #[error("invalid argument: {0}")]
