@@ -56,8 +56,8 @@ The CPU ray cast for exact hit points and silhouette edges of curved faces moved
 
 - [x] Curve-curve and curve-surface intersection
 - [x] Surface-surface intersection (general NURBS path and analytic fast paths)
-- [ ] Boolean pipeline with the edge-case suite and property tests
-- [ ] Kernel debug dumps and `kernel-repro`
+- [x] Boolean pipeline with the edge-case suite and property tests
+- [x] Kernel debug dumps and `kernel-repro`
 - [ ] Body modes on primitives
 - [ ] Combine
 - [ ] Multi-body UI (visibility, colour, rename)
