@@ -61,6 +61,33 @@ pub(super) struct Problem<'s> {
     pub size: f64,
 }
 
+/// Whether every side of `r` that `uv` lies beyond is a single point of
+/// `s` (a pole), so the parameters left `r` only by stepping over it.
+fn past_pole(s: &Surface, r: &Rect, uv: Point2, tol: f64) -> bool {
+    let point_side =
+        |a: Point3, m: Point3, b: Point3| (a - m).length() <= tol && (b - m).length() <= tol;
+    let side = |x: f64, i: Interval| {
+        (x < i.min)
+            .then_some(i.min)
+            .or((x > i.max).then_some(i.max))
+    };
+    let u_ok = side(uv.x, r.u).is_none_or(|u| {
+        point_side(
+            s.point(u, r.v.min),
+            s.point(u, r.v.mid()),
+            s.point(u, r.v.max),
+        )
+    });
+    let v_ok = side(uv.y, r.v).is_none_or(|v| {
+        point_side(
+            s.point(r.u.min, v),
+            s.point(r.u.mid(), v),
+            s.point(r.u.max, v),
+        )
+    });
+    u_ok && v_ok
+}
+
 impl Problem<'_> {
     /// Whether `pt`'s parameters lie in both rectangles, allowing a tiny
     /// relative slack for round-off.
@@ -70,6 +97,19 @@ impl Problem<'_> {
             && self.ra.v.contains_with(pt.a.y, slack(self.ra.v))
             && self.rb.u.contains_with(pt.b.x, slack(self.rb.u))
             && self.rb.v.contains_with(pt.b.y, slack(self.rb.v))
+    }
+
+    /// Whether `pt` lies on a side of either rectangle (where a branch
+    /// may end).
+    fn on_side(&self, pt: &Pt) -> bool {
+        let near = |x: f64, r: Interval| {
+            let eps = 1e-6 * r.length().max(1.0);
+            (x - r.min).abs() <= eps || (x - r.max).abs() <= eps
+        };
+        near(pt.a.x, self.ra.u)
+            || near(pt.a.y, self.ra.v)
+            || near(pt.b.x, self.rb.u)
+            || near(pt.b.y, self.rb.v)
     }
 
     /// The sine of the angle between the normals at `pt` (1 if a normal
@@ -139,6 +179,30 @@ impl Problem<'_> {
         ((pa - pb).length() <= 1e-2 * self.tol).then_some(Pt { p: pa, a, b })
     }
 
+    /// `p` with its parameters found afresh by inversion (following
+    /// periods from `near`), if that puts it inside both rectangles.
+    fn reinvert(&self, p: &Pt, near: &Pt) -> Option<Pt> {
+        // Only a step over a pole: through any other side the curve
+        // really leaves the rectangle (a closed surface that is not
+        // periodic has a seam there, and the parameters must not jump).
+        if !past_pole(self.a, &self.ra, p.a, self.tol)
+            || !past_pole(self.b, &self.rb, p.b, self.tol)
+        {
+            return None;
+        }
+        let ca = self.a.closest_point(p.p).ok()?;
+        let cb = self.b.closest_point(p.p).ok()?;
+        if ca.distance > self.tol || cb.distance > self.tol {
+            return None;
+        }
+        let q = Pt {
+            p: p.p,
+            a: continuous(self.a, Point2::new(ca.u, ca.v), near.a),
+            b: continuous(self.b, Point2::new(cb.u, cb.v), near.b),
+        };
+        self.inside(&q).then_some(q)
+    }
+
     /// Whether the first-order prediction of a step of `h` along `dir`
     /// from `from` leaves either rectangle.
     fn predicted_outside(&self, from: &Pt, dir: Vector3, h: f64) -> bool {
@@ -164,8 +228,35 @@ impl Problem<'_> {
         let x = from.p + dir * h;
         let (au, av) = self.a.partials(from.a.x, from.a.y);
         let (bu, bv) = self.b.partials(from.b.x, from.b.y);
-        let mut a = from.a + solve_tangent(au, av, dir * h)?;
-        let mut b = from.b + solve_tangent(bu, bv, dir * h)?;
+        let linear = solve_tangent(au, av, dir * h)
+            .zip(solve_tangent(bu, bv, dir * h))
+            .and_then(|(da, db)| self.correct(from, dir, x, from.a + da, from.b + db));
+        // Near a pole the parameters change too fast for a linear
+        // prediction: start from the predicted point inverted onto both
+        // surfaces instead.
+        linear.or_else(|| {
+            let ca = self.a.closest_point(x).ok()?;
+            let cb = self.b.closest_point(x).ok()?;
+            let a = continuous(self.a, Point2::new(ca.u, ca.v), from.a);
+            let b = continuous(self.b, Point2::new(cb.u, cb.v), from.b);
+            // The parameters may jump only where they move the point
+            // little (around a pole), never across the seam of a closed
+            // surface that is not periodic.
+            let small = |s: &Surface, p: Point2, q: Point2| {
+                let (su, sv) = s.partials(p.x, p.y);
+                (q.x - p.x).abs() * su.length() + (q.y - p.y).abs() * sv.length() <= 8.0 * h
+            };
+            if !small(self.a, from.a, a) || !small(self.b, from.b, b) {
+                return None;
+            }
+            self.correct(from, dir, x, a, b)
+        })
+    }
+
+    /// Newton's method from parameters `a`, `b` onto both surfaces in the
+    /// plane through `x` normal to `dir`.
+    fn correct(&self, from: &Pt, dir: Vector3, x: Point3, a: Point2, b: Point2) -> Option<Pt> {
+        let (mut a, mut b) = (a, b);
         let target = 1e-3 * self.tol;
         for _ in 0..16 {
             let (pa, pb) = (self.a.point(a.x, a.y), self.b.point(b.x, b.y));
@@ -310,7 +401,8 @@ pub(super) struct Branch {
 /// Whether `p` lies on the polyline of `branch`, within a quarter of the
 /// nearest segment's length (samples are spaced so that the curve stays
 /// much closer than that to its chords).
-fn on_branch(branch: &Branch, p: Point3, tol: f64) -> bool {
+fn on_branch(branch: &Branch, q: &Pt, tol: f64) -> bool {
+    let p = q.p;
     branch.points.windows(2).any(|w| {
         let (s, e) = (w[0].p, w[1].p);
         let d = e - s;
@@ -320,7 +412,13 @@ fn on_branch(branch: &Branch, p: Point3, tol: f64) -> bool {
         } else {
             0.0
         };
-        (s + d * t - p).length() <= 0.25 * len2.sqrt() + 10.0 * tol
+        // Near in space and on the same sheet of parameters (the same
+        // point across a periodic seam is another part of the curve).
+        let near = (s + d * t - p).length() <= 0.25 * len2.sqrt() + 10.0 * tol;
+        let mid = |x: Point2, y: Point2| x + (y - x) * t;
+        let span = |x: Point2, y: Point2| (y - x).length();
+        near && (mid(w[0].a, w[1].a) - q.a).length() <= span(w[0].a, w[1].a) + 1e-6
+            && (mid(w[0].b, w[1].b) - q.b).length() <= span(w[0].b, w[1].b) + 1e-6
     })
 }
 
@@ -361,8 +459,19 @@ fn trace(pr: &Problem<'_>, seed: Pt, sign: f64) -> Result<(Vec<Pt>, bool), GeomE
             // shrunk and still crosses the boundary, end there. A long
             // failed step only means the step was too long.
             if h <= 64.0 * h_min && pr.predicted_outside(&cur, dir, h) {
-                points.push(boundary(pr, &cur, dir, h));
-                return Ok((points, false));
+                let end = boundary(pr, &cur, dir, h);
+                if pr.on_side(&end) || h <= h_min {
+                    points.push(end);
+                    return Ok((points, false));
+                }
+                // The bisection stopped short of the side (steps failing
+                // on the way, near a pole): march on from there.
+                h = (h * 0.25).max(h_min);
+                if let Some(t) = pr.tangent(&end).filter(|_| end.p != cur.p) {
+                    dir = if t.dot(dir) < 0.0 { -t } else { t };
+                    points.push(end);
+                }
+                continue;
             }
             if h <= h_min {
                 // Parallel normals ahead: a tangency the method cannot cross.
@@ -375,9 +484,26 @@ fn trace(pr: &Problem<'_>, seed: Pt, sign: f64) -> Result<(Vec<Pt>, bool), GeomE
             h = (h * 0.5).max(h_min);
             continue;
         };
+        // A step over a pole lands on parameters outside the rectangle
+        // for a point inside it (latitude past 90 degrees): use the
+        // point's parameters in the rectangle instead.
+        let next = if pr.inside(&next) {
+            next
+        } else {
+            pr.reinvert(&next, &cur).unwrap_or(next)
+        };
         if !pr.inside(&next) {
-            points.push(boundary(pr, &cur, dir, h));
-            return Ok((points, false));
+            let end = boundary(pr, &cur, dir, h);
+            if pr.on_side(&end) || h <= h_min {
+                points.push(end);
+                return Ok((points, false));
+            }
+            h = (h * 0.25).max(h_min);
+            if let Some(t) = pr.tangent(&end).filter(|_| end.p != cur.p) {
+                dir = if t.dot(dir) < 0.0 { -t } else { t };
+                points.push(end);
+            }
+            continue;
         }
         // The branch runs into a region where the surfaces are nearly
         // tangent: the samples would no longer pin the curve down.
@@ -457,28 +583,85 @@ pub(super) fn branches(
 ) -> Result<(Vec<Branch>, Vec<Pt>), GeomError> {
     let mut out: Vec<Branch> = Vec::new();
     let mut touching = Vec::new();
-    for seed in seeds {
-        if out.iter().any(|b| on_branch(b, seed.p, pr.tol)) {
+    // Seeds where branches continue across a periodic seam come first, so
+    // the parts of a curve on both sides of a seam are always traced, small
+    // as one of them may be.
+    let mut queue: std::collections::VecDeque<Pt> = seeds.iter().copied().collect();
+    while let Some(seed) = queue.pop_front() {
+        if !pr.inside(&seed) || out.iter().any(|b| on_branch(b, &seed, pr.tol)) {
             continue;
         }
         // Too close to tangent to march from: a touching point, or part of
         // a tangency along a curve; `touching` tells which.
-        if pr.normal_sine(seed) < NEAR_TANGENT_SINE {
-            touching.push(*seed);
+        if pr.normal_sine(&seed) < NEAR_TANGENT_SINE {
+            touching.push(seed);
             continue;
         }
-        let traced = trace(pr, *seed, 1.0).and_then(|(forward, closed)| {
-            if closed {
-                return Ok(forward);
-            }
-            let (backward, _) = trace(pr, *seed, -1.0)?;
+        let (forward, closed) = trace(pr, seed, 1.0)?;
+        let points = if closed {
+            forward
+        } else {
+            let (backward, _) = trace(pr, seed, -1.0)?;
             let mut points: Vec<Pt> = backward.into_iter().skip(1).rev().collect();
             points.extend(forward);
-            Ok(points)
-        });
-        out.push(Branch { points: traced? });
+            points
+        };
+        if !closed {
+            for end in [points.first(), points.last()].into_iter().flatten() {
+                for across in across_seams(pr, end) {
+                    queue.push_front(across);
+                }
+            }
+        }
+        out.push(Branch { points });
     }
     Ok((out, touching))
+}
+
+/// The same point on the other side of each periodic seam it lies on:
+/// where a rectangle spans a whole period, a branch that leaves through
+/// one side continues from the other.
+fn across_seams(pr: &Problem<'_>, end: &Pt) -> Vec<Pt> {
+    let mut out = Vec::new();
+    let wrap = |x: f64, r: Interval, period: Option<f64>| -> Option<f64> {
+        let per = period?;
+        if (r.length() - per).abs() > 1e-9 * per {
+            return None;
+        }
+        let eps = 1e-6 * per;
+        if (x - r.min).abs() <= eps {
+            Some(x + per)
+        } else if (x - r.max).abs() <= eps {
+            Some(x - per)
+        } else {
+            None
+        }
+    };
+    if let Some(u) = wrap(end.a.x, pr.ra.u, pr.a.period_u()) {
+        out.push(Pt {
+            a: Point2::new(u, end.a.y),
+            ..*end
+        });
+    }
+    if let Some(v) = wrap(end.a.y, pr.ra.v, pr.a.period_v()) {
+        out.push(Pt {
+            a: Point2::new(end.a.x, v),
+            ..*end
+        });
+    }
+    if let Some(u) = wrap(end.b.x, pr.rb.u, pr.b.period_u()) {
+        out.push(Pt {
+            b: Point2::new(u, end.b.y),
+            ..*end
+        });
+    }
+    if let Some(v) = wrap(end.b.y, pr.rb.v, pr.b.period_v()) {
+        out.push(Pt {
+            b: Point2::new(end.b.x, v),
+            ..*end
+        });
+    }
+    out
 }
 
 /// Fits a branch: the curve and both pcurves through its samples at shared
@@ -638,7 +821,7 @@ pub(super) fn touching(
     let mut groups: Vec<Vec<Pt>> = Vec::new();
     for s in candidates {
         // A touching point on a traced curve is part of that curve.
-        if branches.iter().any(|b| on_branch(b, s.p, pr.tol)) {
+        if branches.iter().any(|b| on_branch(b, s, pr.tol)) {
             continue;
         }
         let near = groups

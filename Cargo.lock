@@ -457,6 +457,7 @@ dependencies = [
  "bevel-expr",
  "bevel-io",
  "bevel-kernel",
+ "bevel-math",
  "bevel-model",
  "bevel-script",
  "bevel-timeline",

@@ -2,14 +2,14 @@
 
 //! `bevel-cli`: headless Bevel for scripts, CI and power users.
 //!
-//! `rebuild`, `info` and `export` work on `.bevel` documents. Still to come
-//! with their phases: `import`, `validate`, `run`, `pack`, `unpack` and
-//! `kernel-repro`.
+//! `rebuild`, `info` and `export` work on `.bevel` documents;
+//! `kernel-repro` replays a kernel debug dump. Still to come with their
+//! phases: `import`, `validate`, `run`, `pack` and `unpack`.
 
 use anyhow::{Context as _, Result, bail};
 use bevel_doc::DocState;
 use bevel_expr::format_quantity;
-use bevel_kernel::{OpContext, TessellationOptions, mass_properties, tessellate};
+use bevel_kernel::{BooleanDump, OpContext, TessellationOptions, mass_properties, tessellate};
 use bevel_model::{FeatureStatus, Regenerated, Regenerator};
 use bevel_timeline::{SkipReason, StepStatus};
 use std::path::{Path, PathBuf};
@@ -26,6 +26,9 @@ Commands:
       List the features, parameters and bodies with their volumes.
   export <file.bevel> --format stl|3mf [--body NAME] -o <out>
       Write the visible bodies (or one body) as a mesh.
+  kernel-repro <dump.json>
+      Replay a boolean debug dump. Exits with status 1 if the operation
+      still fails.
   help       Show this message
   version    Print the version";
 
@@ -46,6 +49,7 @@ fn main() -> ExitCode {
         Some("rebuild") => rebuild(&args[1..]),
         Some("info") => info(&args[1..]),
         Some("export") => export(&args[1..]),
+        Some("kernel-repro") => kernel_repro(&args[1..]),
         Some(other) => {
             eprintln!("bevel-cli: unknown command `{other}`\n\n{USAGE}");
             return ExitCode::from(2);
@@ -243,4 +247,37 @@ fn export(args: &[String]) -> Result<ExitCode> {
         .with_context(|| format!("cannot write {}", args.out.display()))?;
     println!("wrote {} bodies to {}", meshes.len(), args.out.display());
     Ok(ExitCode::SUCCESS)
+}
+
+fn kernel_repro(args: &[String]) -> Result<ExitCode> {
+    let [file] = args else {
+        bail!("usage: bevel-cli kernel-repro <dump.json>");
+    };
+    let path = Path::new(file);
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
+    let dump =
+        BooleanDump::from_json(&text).with_context(|| format!("cannot open {}", path.display()))?;
+    println!("operation: {:?}", dump.op);
+    println!("recorded error: {}", dump.error);
+    match dump.replay() {
+        Ok(out) => {
+            println!("the operation succeeds: {} bodies", out.bodies.len());
+            let cx = OpContext::default();
+            for (i, body) in out.bodies.iter().enumerate() {
+                let mass = mass_properties(body, &cx).context("mass properties")?;
+                println!(
+                    "  body {}: volume {:.3} mm^3, area {:.3} mm^2",
+                    i + 1,
+                    mass.volume,
+                    mass.area
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(e) => {
+            println!("the operation still fails: {e}");
+            Ok(ExitCode::FAILURE)
+        }
+    }
 }

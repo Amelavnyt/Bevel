@@ -179,17 +179,23 @@ This is a planned design. `OpOutput { bodies, history }` returns the resulting b
 
 ## Boolean pipeline
 
-Union, subtract and intersect (one target against many tools) run in these stages:
+`boolean(target, tool, op, tag, cx)` combines two solids by union, subtraction (target minus tool) or intersection, in `crates/bevel-kernel/src/boolean/`:
 
-1. Broad phase: a face BVH yields candidate face pairs.
-2. Face-face surface intersection produces curves and pcurves, clipped to each face's trimmed domain by 2D classification against the loops using robust predicates.
-3. Imprint: edges and faces are split along the curves, using a 2D arrangement in each face's parameter space.
-4. Classify each fragment as IN, OUT or ON the other body, using multi-ray point-in-solid tests with tolerance.
-5. Select fragments for the operation and flip orientation where needed (subtract).
-6. Sew the selected fragments into shells, merging same-domain faces (for example coplanar pieces) and redundant edges.
-7. Heal and validate. On failure the operation returns `KernelError::Boolean { stage, .. }` together with a debug dump; it never returns a broken body.
+1. **Prepare.** Each face's trimmed domain becomes polygons in `(u, v)` through its pcurves (`domain.rs`). Every polygon segment remembers the stretch of pcurve it stands for and how far that stretch strays from it; a point closer to a segment than that is decided against the pcurve itself (halving the stretch), so classification is exact near the boundary too. Each body also gets a point-in-solid classifier (`classify.rs`): nine fixed ray directions, majority vote, with points within tolerance of a face reported as on it.
+2. **Cut** (`cut.rs`). Every pair of faces whose boxes overlap is intersected with `surface_surface`. Each curve is split where it crosses either face's edges and the parts inside both faces become cut pieces; parts that run along an edge of one face through the other mark that stretch of edge instead. Coincident faces imprint their edges on each other. The input edges are split at all those points. Pieces that coincide (the same curve from two face pairs) are merged and refitted; a pole's degenerate edge is split where cut pieces end on it. Fitted pcurve ends are then moved onto the exact pcurves they meet, since near a pole a tolerance in space is a large offset in `u`.
+3. **Imprint** (`imprint.rs`). On each face, the boundary pieces (in loop order) and both directions of each cut piece form a planar graph in `(u, v)` (mirrored in `v` for a reversed face, so the face is always on the left). Cut pieces with a free end bound nothing and are dropped. Cycles are traced by taking, at each node, the first half-edge clockwise from the way back; a node is a vertex at one place in `(u, v)`, so a seam's two sides are different nodes. Counter-clockwise cycles are fragments, clockwise ones holes, each assigned to the smallest fragment containing a point just to its left.
+4. **Classify.** A point inside each fragment is tested against the other solid: inside, outside, or on its boundary with the same or the opposite orientation.
+5. **Select.** Union keeps what lies outside the other solid, intersection what lies inside, subtraction the target outside the tool and the tool inside the target, turned over. Of two coincident fragments with the same orientation union and intersection keep one; with opposite orientation subtraction keeps the target's.
+6. **Sew** (`sew.rs`). Kept fragments are grouped into shells through shared pieces (a piece used by more than two kept fragments, as where bodies touch along an edge, is split per body) and built with `BodyBuilder`, which validates. Each shell becomes a body, except a shell made only of turned-over tool faces: that is a void, and it goes into the first body (which of several bodies holds it is not told apart yet). Names: fragments of input faces and edges are `Modified` from them (fragment indices in a deterministic order), cut edges are `Between` their two faces, new vertices are `Generated` in coordinate order.
 
-Coplanar faces, contact along an edge or at a vertex, coaxial cylinders, tangent spheres and near-tolerance slivers are each a named test case from the first boolean commit.
+Any failure returns `KernelError::Boolean { stage, message }`; a broken body is never returned. Faces of the same surface that end up side by side are not merged yet.
+
+The named edge cases (overlapping boxes, a hole through a box, coplanar faces, boxes sharing a face, touching along an edge and at a corner, coaxial cylinders, tangent spheres, a sphere through a box, near-tolerance slivers) are tests in `crates/bevel-kernel/tests/boolean.rs`, with the volume identities on random rotated boxes, cylinders and spheres and a list of placements that once failed.
+
+Known limits:
+
+- A tool edge that grazes a face (entering and leaving it within a few tolerances) can leave a sliver face the tessellator cannot triangulate, or fail with a clear error. Random rotated primitives hit a failure about once in 200 to 400 placements, almost always at such grazing contacts or within a hundredth of a millimetre of a sphere's pole.
+- Tangential contact of two NURBS surfaces along a curve is refused (`GeomError::TangentContact`).
 
 ## Persistent naming
 
@@ -197,7 +203,7 @@ Every face, edge and vertex carries a `TopoName` derived from how it was created
 
 ## Robustness program
 
-- Every kernel failure can dump its inputs (bodies, operation and options) to a `bevel-debug-*.json` file, which can be replayed with `bevel-cli kernel-repro <file>`.
+- A failed boolean can dump its inputs (both bodies, the operation and the tolerance) as a `BooleanDump` to a `bevel-debug-boolean-*.json` file, which `bevel-cli kernel-repro <file>` replays.
 - Property tests (`proptest`) apply random primitives under random transforms and check that results validate and that volume identities hold: `V(A union B) = V(A) + V(B) - V(A intersect B)` and `V(A - B) = V(A) - V(A intersect B)`.
 - `validate(&Body)` is run on results in debug builds and tests. It checks closed 2-manifold shells, consistent orientation, loop closure, pcurve and 3D curve agreement, vertices on their edges, Euler-Poincare and, in debug and tests only, absence of self-intersections.
 - Every kernel bug becomes a regression test and gets a row in the robustness log below.
@@ -222,6 +228,14 @@ Add a row for each kernel bug, newest last. The regression test column names the
 | 2026-10-28 | SSI traced a circle twice near a sphere's pole | Newton landed a whole period away, so the seam crossing went unseen, and loop closure then missed the seed | Keep marched parameters continuous with the previous point; close loops on the sheet test and on seeds passed within the last step | `plane_sphere_fast_path_matches_general` |
 | 2026-10-28 | SSI fitting piled samples onto a pole and failed | The midpoint check refined through the singular point; the branch end at the pole carried an arbitrary longitude | Check fits against what the result promises (curve on both surfaces, pcurves onto the curve); skip spans shorter than 10 tol; take a pole end's degenerate parameter from its neighbour | `plane_sphere_and_sphere_sphere_are_circles` |
 | 2026-10-28 | Open: the general SSI cannot fit a curve that passes exactly through a pole of a parametrization | Near the pole the samples' longitudes are unreliable | Analytic surfaces take exact fast paths, so only NURBS surfaces with poles are affected; to be handled with singular points in Phase 8 | (none yet) |
+| 2026-10-28 | Boolean intersection curve through both poles of a sphere joined into one part | Clipping joined the parts of a closed curve across the range end, which was a pole | Join across the ends only when the parameters run on continuously there | `past_failures` |
+| 2026-10-28 | SSI marching jumped across the seam of a closed NURBS sphere | The closest-point fallback predictor took the parameters on the far side of the seam | Accept the fallback only where the parameters move the point little (around a pole) | `nurbs_forms_give_the_same_circle` |
+| 2026-10-28 | A sphere–sphere curve crossing a seam was kept as one part | A seam point inverts to the same side from both parts, so continuity looked fine | Follow each part's parameters from its middle to the common end | `past_failures` |
+| 2026-10-28 | Tessellating a boolean result hit the point limit | Edges were cut by their 3D curve only; their pcurves bent in `(u, v)` and the normals turned along them, which face refinement cannot fix | Also cut edges by each pcurve's chord, normal turn and turn in `(u, v)`; ignore folds in triangles thinner than the chordal tolerance against the boundary | `past_failures` |
+| 2026-10-28 | A branch ended 2e-3 mm short of a seam next to a pole | Steps failed during the exit bisection, which stopped where they did | March on with a smaller step when the exit is not on a side | `past_failures` |
+| 2026-10-28 | Volume off by 3e-4 relative near a pole | A pcurve swung round the pole within one edge span; the sliver quadrature could not follow it | Bound the pcurve's turn in `(u, v)` per edge span | `past_failures` |
+| 2026-10-28 | Imprint traced a cut loop as a slit near a pole | A pcurve end sat 9e-7 off in `u`, over the node tolerance | Match half-edges to the copy of the vertex within a thousand node tolerances; snap fitted pcurve ends onto the exact pcurves they meet | `past_failures` |
+| 2026-10-28 | A cut a thousandth of a millimetre inside a circular edge was dropped | Face domains were polygons at the export chordal tolerance, coarser than the cut | Decide points near a polygon segment against its pcurve | `past_failures` |
 
 ## Algorithm notes
 

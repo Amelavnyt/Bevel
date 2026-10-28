@@ -8,7 +8,7 @@
 //! (a pole or an apex) has no length to measure, so it takes its count from
 //! the surface along its pcurve (see [`degenerate_params`]).
 
-use bevel_geom::{Curve3, CurveGeom, SurfaceGeom};
+use bevel_geom::{Curve2, Curve3, CurveGeom, Surface, SurfaceGeom};
 use bevel_math::{Aabb2, Interval, Point3, Vector3};
 use slotmap::SecondaryMap;
 
@@ -64,6 +64,19 @@ pub(crate) fn discretize_edges(
     cap: usize,
     cx: &OpContext,
 ) -> Result<SecondaryMap<EdgeKey, EdgeSamples>, KernelError> {
+    // The pcurves of each edge with their surfaces: a span must also be
+    // fine enough that its chord in (u, v) maps close to its 3D chord, or
+    // the faces' boundary polygons stray from their edges.
+    let mut on: SecondaryMap<EdgeKey, Vec<(&Curve2, &Surface)>> = SecondaryMap::new();
+    for (_, c) in body.coedges() {
+        let face = body
+            .loop_(c.loop_)
+            .and_then(|l| body.face(l.face))
+            .ok_or(KernelError::UnknownKey(EntityKey::Loop(c.loop_)))?;
+        if let Some(list) = on.entry(c.edge) {
+            list.or_default().push((&c.pcurve, &face.surface));
+        }
+    }
     let mut out = SecondaryMap::new();
     for (key, edge) in body.edges() {
         cx.check_cancelled()?;
@@ -71,7 +84,8 @@ pub(crate) fn discretize_edges(
         let params = if edge.degenerate {
             degenerate_params(body, key, edge, options, cap)?
         } else {
-            curve_params(&edge.curve, edge.range, options, cap, entity)?
+            let pcurves = on.get(key).map_or(&[][..], Vec::as_slice);
+            cut_curve(&edge.curve, edge.range, pcurves, options, cap, entity)?
         };
         let start = body
             .vertex(edge.start)
@@ -131,6 +145,27 @@ pub(crate) fn curve_params(
     cap: usize,
     entity: EntityKey,
 ) -> Result<Vec<f64>, KernelError> {
+    cut_curve(curve, range, &[], options, cap, entity)
+}
+
+/// [`curve_params`], with every span also tested on `pcurves`: the
+/// points of each pcurve's chord in `(u, v)` (at a quarter, the middle
+/// and three quarters), mapped through its surface, must lie within
+/// `chordal` of the 3D chord (for a pcurve that is straight in `(u, v)`
+/// this is the plain chordal test again), and both the surface normal
+/// along the pcurve and the pcurve's own tangent in `(u, v)` must turn by
+/// at most `angular` (for the lines and circles bounding primitives'
+/// faces the pcurve turns as the curve does). Face refinement cannot
+/// split a boundary segment, so a segment failing either test would make
+/// it refine without end.
+fn cut_curve(
+    curve: &Curve3,
+    range: Interval,
+    pcurves: &[(&Curve2, &Surface)],
+    options: &TessellationOptions,
+    cap: usize,
+    entity: EntityKey,
+) -> Result<Vec<f64>, KernelError> {
     if !(range.min.is_finite() && range.max.is_finite() && range.min < range.max) {
         return Err(KernelError::Tessellation {
             entity,
@@ -145,6 +180,7 @@ pub(crate) fn curve_params(
     let mut out = vec![range.min];
     let mut cutter = Cutter {
         curve,
+        pcurves,
         options,
         cap,
         entity,
@@ -172,6 +208,7 @@ fn span_end(a: f64, b: f64, k: usize, n: usize) -> f64 {
 /// The recursive span splitter of [`curve_params`].
 struct Cutter<'a> {
     curve: &'a Curve3,
+    pcurves: &'a [(&'a Curve2, &'a Surface)],
     options: &'a TessellationOptions,
     cap: usize,
     entity: EntityKey,
@@ -217,10 +254,32 @@ impl Cutter<'_> {
         for s in [0.25, 0.5, 0.75] {
             let p = c.point(a + (b - a) * s);
             deviation = deviation.max(distance_to_segment(p, pa, chord));
+            for (pc, surface) in self.pcurves {
+                let (qa, qb) = (pc.point(a), pc.point(b));
+                let q = qa + (qb - qa) * s;
+                let p = surface.point(q.x, q.y);
+                deviation = deviation.max(distance_to_segment(p, pa, chord));
+            }
         }
         let mid = 0.5 * (a + b);
         let (ta, tm, tb) = (c.tangent(a), c.tangent(mid), c.tangent(b));
-        let turn = angle_opt(ta, tm) + angle_opt(tm, tb);
+        let mut turn = angle_opt(ta, tm) + angle_opt(tm, tb);
+        // The faces' normals along the edge turn no more than their
+        // triangles allow either.
+        for (pc, surface) in self.pcurves {
+            let normal = |t: f64| {
+                let q = pc.point(t);
+                surface.normal(q.x, q.y)
+            };
+            let (na, nm, nb) = (normal(a), normal(mid), normal(b));
+            turn = turn.max(angle_opt(na, nm) + angle_opt(nm, nb));
+            // Nor does the pcurve turn more in (u, v), where the faces
+            // integrate along it: near a pole it can swing round while
+            // the 3D curve barely bends.
+            let tangent = |t: f64| pc.tangent(t).map(|d| Vector3::new(d.x, d.y, 0.0));
+            let ts = [0.0, 0.25, 0.5, 0.75, 1.0].map(|s| tangent(a + (b - a) * s));
+            turn = turn.max(ts.windows(2).map(|w| angle_opt(w[0], w[1])).sum());
+        }
 
         let mut need: f64 = 1.0;
         if deviation > o.chordal {

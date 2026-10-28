@@ -12,12 +12,10 @@
 //! parameters, refined until it maps within tolerance.
 
 use super::super::{Contact, Rect, SsiCurve, SsiPoint};
+use crate::intersect::{CurveCurveHit, curve_curve_3d};
 use crate::{Curve2, Curve3, CurveGeom, Ellipse2, GeomError, Line2, Surface, SurfaceGeom, fit};
 use bevel_math::{Interval, Point2, Point3};
-use std::f64::consts::PI;
 
-/// Samples used to find where a curve enters and leaves the rectangles.
-const CLIP_SAMPLES: usize = 512;
 /// The most samples a fitted pcurve may use.
 const MAX_PCURVE_SAMPLES: usize = 4097;
 
@@ -80,39 +78,32 @@ pub(super) fn clip(
     pair: &Pair<'_>,
     tol: f64,
 ) -> Result<Vec<SsiCurve>, GeomError> {
-    // Walk the samples, following the parameters continuously within a
-    // part. A part ends where the continued parameters leave a rectangle,
-    // at its edge or at a periodic seam (where the next part starts at
-    // once), or jump, through a pole or an apex.
-    let n = CLIP_SAMPLES;
-    let ts: Vec<f64> = (0..=n)
-        .map(|i| range.min + range.length() * i as f64 / n as f64)
-        .collect();
-    let mut parts = Vec::new();
-    let mut open: Option<(f64, Uv)> = None;
-    let mut prev_t = range.min;
-    for (i, &t) in ts.iter().enumerate() {
-        if let Some((start, near)) = open {
-            if let Some(uv) = pair.follow(curve, t, near) {
-                open = Some((start, uv));
-                prev_t = t;
-                continue;
-            }
-            let end = pair.leave(curve, prev_t, t, near);
-            parts.push(Interval::new(start, end));
-            open = pair.fresh(curve, t).map(|uv| (end, uv));
-        } else if let Some(uv) = pair.fresh(curve, t) {
-            let start = if i == 0 {
-                t
-            } else {
-                pair.enter(curve, prev_t, t)
-            };
-            open = Some((start, uv));
+    // Break the curve where it crosses the rectangles' sides (exactly, by
+    // intersecting it with their boundary curves) and keep the stretches
+    // whose middles lie inside both. A side that is a periodic seam or a
+    // pole also breaks it, so each part's parameters run without a jump.
+    let mut breaks = vec![range.min, range.max];
+    breaks.extend(crossings(curve, range, pair.a, &pair.ra, tol)?);
+    breaks.extend(crossings(curve, range, pair.b, &pair.rb, tol)?);
+    breaks.retain(|t| range.contains_with(*t, 0.0));
+    breaks.sort_by(f64::total_cmp);
+    breaks.dedup_by(|x, y| (*x - *y).abs() <= 1e-12 * range.length().max(1.0));
+    let mut parts: Vec<Interval> = Vec::new();
+    for w in breaks.windows(2) {
+        let part = Interval::new(w[0], w[1]);
+        if part.length() <= 0.0 || pair.fresh(curve, part.mid()).is_none() {
+            continue;
         }
-        prev_t = t;
-    }
-    if let Some((start, _)) = open {
-        parts.push(Interval::new(start, range.max));
+        // A touch of a side is not a break: join the parts when the
+        // parameters run on across it.
+        if let Some(last) = parts.last_mut()
+            && (last.max - part.min).abs() <= f64::EPSILON * range.length().max(1.0)
+            && pair.continuous_at(curve, *last, part)
+        {
+            last.max = part.max;
+            continue;
+        }
+        parts.push(part);
     }
     // Drop slivers (a closed curve's ends coincide, so measure to the middle).
     parts.retain(|p| {
@@ -124,6 +115,7 @@ pub(super) fn clip(
         let (first, last) = (parts[0], parts[parts.len() - 1]);
         if (first.min - range.min).abs() <= f64::EPSILON * range.length().max(1.0)
             && (last.max - range.max).abs() <= f64::EPSILON * range.length().max(1.0)
+            && pair.continuous_at(curve, last, first)
         {
             let period = range.length();
             parts.pop();
@@ -155,6 +147,10 @@ fn is_closed(curve: &Curve3, range: Interval, tol: f64) -> bool {
 /// Parameters on both surfaces.
 type Uv = (Point2, Point2);
 
+/// Steps in which [`Pair::continuous_at`] follows a part's parameters
+/// from its middle to its end.
+const FOLLOW_STEPS: u32 = 16;
+
 impl Pair<'_> {
     fn inside(&self, uv: Uv) -> bool {
         self.ra.contains_with(uv.0.x, uv.0.y, 1e-9) && self.rb.contains_with(uv.1.x, uv.1.y, 1e-9)
@@ -170,53 +166,120 @@ impl Pair<'_> {
         self.inside(uv).then_some(uv)
     }
 
-    /// The parameters at `t` continued from `near`, if they stay in the
-    /// rectangles without jumping.
-    fn follow(&self, curve: &Curve3, t: f64, near: Uv) -> Option<Uv> {
-        let p = curve.point(t);
-        let uv = (
-            invert(self.a, &self.ra, p, Some(near.0))?,
-            invert(self.b, &self.rb, p, Some(near.1))?,
-        );
-        let jump = (uv.0 - near.0).length() > PI / 2.0 || (uv.1 - near.1).length() > PI / 2.0;
-        (self.inside(uv) && !jump).then_some(uv)
+    /// Whether the parameters run on without a jump from part `left` into
+    /// the next part `right` at their common end.
+    fn continuous_at(&self, curve: &Curve3, left: Interval, right: Interval) -> bool {
+        let (Some(l), Some(r)) = (
+            self.fresh(curve, left.mid()),
+            self.fresh(curve, right.mid()),
+        ) else {
+            return false;
+        };
+        // Follow each part's parameters from its middle out to the common
+        // end: inverting the end point alone cannot tell the two sides of a
+        // periodic seam apart.
+        let follow = |from: f64, mut uv: Uv, to: f64| -> Option<Uv> {
+            for i in 1..=FOLLOW_STEPS {
+                let t = from + (to - from) * f64::from(i) / f64::from(FOLLOW_STEPS);
+                let p = curve.point(t);
+                uv = (
+                    invert(self.a, &self.ra, p, Some(uv.0))?,
+                    invert(self.b, &self.rb, p, Some(uv.1))?,
+                );
+            }
+            Some(uv)
+        };
+        let (Some(x), Some(y)) = (
+            follow(left.mid(), l, left.max),
+            follow(right.mid(), r, right.min),
+        ) else {
+            return false;
+        };
+        let size = |r: &Rect| r.u.length().hypot(r.v.length());
+        (x.0 - y.0).length() <= 1e-6 * size(&self.ra)
+            && (x.1 - y.1).length() <= 1e-6 * size(&self.rb)
+            && !singular(self.a, x.0)
+            && !singular(self.b, x.1)
     }
+}
 
-    /// Where a part that is inside at `inn` (with parameters `near`) ends
-    /// before `out`, by bisection.
-    fn leave(&self, curve: &Curve3, inn: f64, out: f64, near: Uv) -> f64 {
-        let (mut inn, mut out, mut near) = (inn, out, near);
-        for _ in 0..60 {
-            let mid = 0.5 * (inn + out);
-            match self.follow(curve, mid, near) {
-                Some(uv) => {
-                    inn = mid;
-                    near = uv;
+/// Where `curve` over `range` crosses the sides of `r` on `s`: the
+/// parameters where it meets each side's boundary curve, and where it
+/// passes through a side that is a single point (a pole).
+fn crossings(
+    curve: &Curve3,
+    range: Interval,
+    s: &Surface,
+    r: &Rect,
+    tol: f64,
+) -> Result<Vec<f64>, GeomError> {
+    let mut out = Vec::new();
+    // Each side: its boundary curve over its parameter range, or `None`
+    // where the side is a single point (a sphere's pole), with that point.
+    let side = |u: Option<f64>, v: Option<f64>| -> (Option<(Curve3, Interval)>, Point3) {
+        match (u, v) {
+            (Some(u), _) => (
+                s.isocurve_u(u).ok().map(|c| (c, r.v)),
+                s.point(u, r.v.mid()),
+            ),
+            (_, Some(v)) => (
+                s.isocurve_v(v).ok().map(|c| (c, r.u)),
+                s.point(r.u.mid(), v),
+            ),
+            _ => (None, Point3::ZERO),
+        }
+    };
+    let sides = [
+        side(Some(r.u.min), None),
+        side(Some(r.u.max), None),
+        side(None, Some(r.v.min)),
+        side(None, Some(r.v.max)),
+    ];
+    for (iso, mid) in &sides {
+        let point = match iso {
+            Some((c, along)) => {
+                let (p0, pm, p1) = (c.point(along.min), c.point(along.mid()), c.point(along.max));
+                ((p0 - pm).length() <= tol && (p1 - pm).length() <= tol).then_some(pm)
+            }
+            None => Some(*mid),
+        };
+        if let Some(pole) = point {
+            // A pole: the curve breaks where it passes through it.
+            let c = curve.closest_point(pole)?;
+            if c.distance <= tol {
+                out.push(into_range(curve, range, c.t));
+            }
+            continue;
+        }
+        if let Some((c, along)) = iso {
+            for hit in curve_curve_3d(curve, range, c, *along, tol)? {
+                match hit {
+                    CurveCurveHit::Point { a, .. } => out.push(a),
+                    CurveCurveHit::Overlap { a, .. } => out.extend([a.min, a.max]),
                 }
-                None => out = mid,
             }
         }
-        inn
     }
+    Ok(out)
+}
 
-    /// Where the curve enters the rectangles between `out` and `inn`, by
-    /// bisection.
-    fn enter(&self, curve: &Curve3, out: f64, inn: f64) -> f64 {
-        let (mut out, mut inn) = (out, inn);
-        for _ in 0..60 {
-            let mid = 0.5 * (out + inn);
-            if self.fresh(curve, mid).is_some() {
-                inn = mid;
-            } else {
-                out = mid;
-            }
+/// `t` shifted by whole periods of a periodic `curve` into `range` when a
+/// copy lies there.
+fn into_range(curve: &Curve3, range: Interval, t: f64) -> f64 {
+    match curve.domain().period() {
+        Some(per) if per > 0.0 => {
+            let base = t + ((range.mid() - t) / per).round() * per;
+            [base - per, base, base + per]
+                .into_iter()
+                .find(|c| range.contains_with(*c, 1e-12))
+                .unwrap_or(base)
         }
-        inn
+        _ => t,
     }
 }
 
 /// The pcurve of `curve` over `part` on `s`, and its error bound.
-fn pcurve(
+pub(super) fn pcurve(
     curve: &Curve3,
     part: Interval,
     s: &Surface,
@@ -248,6 +311,7 @@ fn pcurve(
             near = invert(s, r, curve.point(ts[i]), Some(near))?;
             uv[i] = near;
         }
+        settle_poles(s, &mut uv);
         Some((ts, uv))
     };
     let error = |pc: &Curve2, ts: &[f64]| -> f64 {
@@ -310,6 +374,34 @@ fn pcurve(
     Err(GeomError::ToleranceNotMet {
         error: f64::INFINITY,
     })
+}
+
+/// Whether `uv` is a singular point of `s`'s parametrization (a pole).
+fn singular(s: &Surface, uv: Point2) -> bool {
+    let (su, sv) = s.partials(uv.x, uv.y);
+    let scale = su.length().max(sv.length()).max(f64::MIN_POSITIVE);
+    su.length() <= 1e-9 * scale || sv.length() <= 1e-9 * scale
+}
+
+/// At an end on a singular point of the parametrization (a pole, where
+/// one parameter can take any value), takes that parameter from the
+/// neighbouring sample: the limit along the curve, not the arbitrary value
+/// inversion gives there.
+fn settle_poles(s: &Surface, uv: &mut [Point2]) {
+    let n = uv.len();
+    if n < 2 {
+        return;
+    }
+    for (end, next) in [(0, 1), (n - 1, n - 2)] {
+        let (su, sv) = s.partials(uv[end].x, uv[end].y);
+        let scale = su.length().max(sv.length()).max(f64::MIN_POSITIVE);
+        if su.length() <= 1e-9 * scale {
+            uv[end].x = uv[next].x;
+        }
+        if sv.length() <= 1e-9 * scale {
+            uv[end].y = uv[next].y;
+        }
+    }
 }
 
 /// The exact pcurve of a line or conic lying in a plane: the same curve in

@@ -564,9 +564,21 @@ impl Tri<'_> {
         let s = &self.face.surface;
         // Orientation: counter-clockwise in (u, v) must face along
         // S_u x S_v in 3D (near a pole or an apex a triangle can fold).
+        // Not for a triangle thinner than `chordal` against a boundary
+        // segment: the boundary's chord in (u, v) maps up to `chordal` away
+        // from its 3D chord, so such a triangle can look folded however
+        // finely it is refined, and it lies within tolerance anyway.
+        let thin = (0..3).any(|k| {
+            let (a, b) = (pos[k], pos[(k + 1) % 3]);
+            let d = b - a;
+            constraint[k]
+                && greater(d.length_squared(), 0.0)
+                && d.cross(pos[(k + 2) % 3] - a).length() <= o.chordal * d.length()
+        });
         let centroid_uv = (uv[0] + uv[1] + uv[2]) / 3.0;
         let facet = (pos[1] - pos[0]).cross(pos[2] - pos[0]);
-        if let Some(n) = s.normal(centroid_uv.x, centroid_uv.y)
+        if !thin
+            && let Some(n) = s.normal(centroid_uv.x, centroid_uv.y)
             && !greater(facet.dot(n), 0.0)
         {
             return true;
@@ -578,7 +590,8 @@ impl Tri<'_> {
         if distance > o.chordal {
             return true;
         }
-        if let Some(n) = s.normal(foot.x, foot.y)
+        if !thin
+            && let Some(n) = s.normal(foot.x, foot.y)
             && !greater(facet.dot(n), 0.0)
         {
             return true;
