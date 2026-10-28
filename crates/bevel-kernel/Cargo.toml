@@ -15,6 +15,7 @@ workspace = true
 bevel-math.workspace = true
 bevel-geom.workspace = true
 serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 slotmap.workspace = true
 spade.workspace = true
 thiserror.workspace = true
@@ -22,4 +23,3 @@ thiserror.workspace = true
 [dev-dependencies]
 insta = { workspace = true, features = ["json"] }
 proptest.workspace = true
-serde_json = { workspace = true, features = ["float_roundtrip"] }

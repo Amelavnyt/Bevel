@@ -52,6 +52,7 @@
 
 mod boolean;
 pub mod builder;
+pub mod debug;
 pub mod mass;
 pub mod naming;
 pub mod primitives;
@@ -66,6 +67,7 @@ mod tests;
 
 pub use boolean::{BooleanOp, BooleanStage, boolean};
 pub use builder::BodyBuilder;
+pub use debug::BooleanDump;
 pub use error::KernelError;
 pub use mass::{MassProperties, edge_length, face_area, mass_properties};
 pub use naming::{
