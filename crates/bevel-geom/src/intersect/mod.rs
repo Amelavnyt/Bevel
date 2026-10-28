@@ -28,7 +28,7 @@ mod ssi;
 
 pub use curve_curve::{curve_curve_2d, curve_curve_3d};
 pub use curve_surface::curve_surface;
-pub use ssi::{surface_surface, surface_surface_general};
+pub use ssi::{pcurve_on, surface_surface, surface_surface_general};
 
 use bevel_math::Interval;
 

@@ -69,6 +69,28 @@ pub fn surface_surface(
     }
 }
 
+/// The pcurve on `s` of `curve` over `range`, a curve lying on `s`, with
+/// the curve's own parameter: `s` at the pcurve's point equals `curve`'s
+/// point within the returned error bound. Exact for lines and conics on
+/// planes and wherever the surface parameters change linearly along the
+/// curve; otherwise a cubic refined until it maps within half of `tol`.
+/// The parameters start near the middle of `rect` and are followed
+/// continuously from there.
+///
+/// # Errors
+///
+/// [`GeomError::NotConverged`] if a point cannot be inverted onto `s`, and
+/// [`GeomError::ToleranceNotMet`] if no cubic of reasonable size fits.
+pub fn pcurve_on(
+    curve: &crate::Curve3,
+    range: bevel_math::Interval,
+    s: &Surface,
+    rect: Rect,
+    tol: f64,
+) -> Result<(crate::Curve2, f64), GeomError> {
+    pieces::pcurve(curve, range, s, &rect, tol)
+}
+
 fn check(ra: Rect, rb: Rect, tol: f64) -> Result<(), GeomError> {
     let values = [
         ra.u.min, ra.u.max, ra.v.min, ra.v.max, rb.u.min, rb.u.max, rb.v.min, rb.v.max, tol,
