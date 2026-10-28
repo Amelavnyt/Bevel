@@ -50,6 +50,7 @@
 //!
 //! Next: extrude, revolve and booleans.
 
+mod boolean;
 pub mod builder;
 pub mod mass;
 pub mod naming;
@@ -63,6 +64,7 @@ mod serial;
 #[cfg(test)]
 mod tests;
 
+pub use boolean::{BooleanOp, BooleanStage, boolean};
 pub use builder::BodyBuilder;
 pub use error::KernelError;
 pub use mass::{MassProperties, edge_length, face_area, mass_properties};

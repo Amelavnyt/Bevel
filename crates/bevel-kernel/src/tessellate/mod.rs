@@ -56,7 +56,7 @@
 //! iterates a hash map, so the same body and options give a bit-identical
 //! mesh.
 
-mod edge;
+pub(crate) mod edge;
 pub(crate) mod face;
 
 use bevel_geom::SurfaceGeom;

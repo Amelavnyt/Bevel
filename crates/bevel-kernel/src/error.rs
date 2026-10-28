@@ -92,6 +92,16 @@ pub enum KernelError {
     #[error("{0} is recorded twice in the history")]
     DuplicateHistory(Box<TopoName>),
 
+    /// A boolean operation failed at `stage`; `message` says why. No
+    /// partial result is returned.
+    #[error("the boolean operation failed while {stage}: {message}")]
+    Boolean {
+        /// The stage that failed.
+        stage: crate::boolean::BooleanStage,
+        /// What went wrong.
+        message: String,
+    },
+
     /// The operation was cancelled through its context.
     #[error("the operation was cancelled")]
     Cancelled,
