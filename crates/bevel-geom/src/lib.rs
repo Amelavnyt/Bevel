@@ -89,6 +89,7 @@ pub mod basis;
 pub mod conics;
 pub mod fit;
 pub mod geometry;
+pub mod intersect;
 
 mod error;
 mod gauss_legendre;
