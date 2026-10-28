@@ -27,3 +27,4 @@ anyhow.workspace = true
 
 [dev-dependencies]
 bevel-io.workspace = true
+bevel-math.workspace = true

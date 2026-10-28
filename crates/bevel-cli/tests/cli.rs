@@ -103,3 +103,43 @@ fn bad_input_fails_with_a_message() {
     let o = run(&["frobnicate"]);
     assert_eq!(o.status.code(), Some(2));
 }
+
+fn block(origin: [f64; 3], tag: u64) -> bevel_kernel::Body {
+    use bevel_math::{Frame3, Point3, Vector3};
+    let params = bevel_kernel::BoxParams {
+        frame: Frame3 {
+            origin: Point3::from_array(origin),
+            ..Frame3::WORLD
+        },
+        size: Vector3::from_array([10.0; 3]),
+    };
+    let mut cx = bevel_kernel::OpContext::new();
+    let out = bevel_kernel::box_(&params, bevel_kernel::OpTag(tag), &mut cx).unwrap();
+    (*out.bodies[0]).clone()
+}
+
+#[test]
+fn kernel_repro_replays_a_dump() {
+    use bevel_kernel::{BooleanDump, BooleanOp, KernelError, OpContext, OpTag};
+    let dump = BooleanDump::new(
+        &block([0.0; 3], 1),
+        &block([5.0; 3], 2),
+        BooleanOp::Union,
+        OpTag(3),
+        &OpContext::new(),
+        &KernelError::Cancelled,
+    );
+    let path = out_dir().join("union.json");
+    std::fs::write(&path, dump.to_json().unwrap()).unwrap();
+    let o = run(&["kernel-repro", path.to_str().unwrap()]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let text = stdout(&o);
+    assert!(text.contains("succeeds: 1 bodies"), "{text}");
+    assert!(text.contains("volume 1875.000 mm^3"), "{text}");
+}
+
+#[test]
+fn kernel_repro_fails_on_a_missing_file() {
+    let o = run(&["kernel-repro", "does-not-exist.json"]);
+    assert!(!o.status.success());
+}
